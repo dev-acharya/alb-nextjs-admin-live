@@ -10,7 +10,7 @@ const REPORT_TYPE_OPTIONS = [
   { label: "Marriage Love Life Report",   value: "#MLR-"  },
   { label: "Wealth & Finance Report",     value: "#WR-"   },
   { label: "Education & Academic Report", value: "#EAR-"  },
-  { label: "Baby Child Report",         value: "#BCR-"  },
+  { label: "Baby Name Report",         value: "#BNR-"  },
   { label: "Business Partnership Report", value: "#BPR-"  },
   { label: "Nakshatra Analysis Report",   value: "#NAR-"  },
   { label: "Sade Sati Report",            value: "#SSR-"  },
