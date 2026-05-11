@@ -41,10 +41,12 @@ const PlanCard = ({
   plan,
   onToggle,
   onEdit,
+  onDelete,
 }: {
   plan: Plan;
   onToggle: (planId: string, current: boolean) => void;
   onEdit: (planId: string) => void;
+  onDelete: (planId: string, title: string) => void;
 }) => (
   <div
     className={`bg-white rounded-xl border-2 shadow-sm p-5 flex flex-col gap-4 transition-all ${
@@ -153,6 +155,12 @@ const PlanCard = ({
           : <><ToggleRight className="w-3.5 h-3.5" /> Activate</>
         }
       </button>
+       <button
+        onClick={() => onDelete(plan.planId, plan.title)}
+        className="p-2 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-all"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
     </div>
   </div>
 );
@@ -163,12 +171,14 @@ const GroupSection = ({
   onEditPlan,
   onEditGroup,
   onDeleteGroup,
+  onDeletePlan,
 }: {
   group: PlanGroup;
   onTogglePlan: (planId: string, current: boolean) => void;
   onEditPlan: (planId: string) => void;
   onEditGroup: (groupId: string) => void;
   onDeleteGroup: (groupId: string, title: string) => void;
+  onDeletePlan: (planId: string, title: string) => void;
 }) => {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -232,6 +242,7 @@ const GroupSection = ({
                   plan={plan}
                   onToggle={onTogglePlan}
                   onEdit={onEditPlan}
+                  onDelete={onDeletePlan}
                 />
               ))
           )}
@@ -336,6 +347,67 @@ const LJRPlansList = () => {
     }
   };
 
+const handleDelete = async (planId: string, title: string) => {
+  const result = await Swal.fire({
+    title: 'Deactivate Plan?',
+    text: `"${title}" will be deactivated.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#d33',
+    cancelButtonColor: '#d1d5db',
+    confirmButtonText: 'Deactivate',
+    cancelButtonText: 'Cancel',
+    reverseButtons: true,
+  });
+
+  if (!result.isConfirmed) return;
+
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/api/admin/plans/${planId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+
+    const data = await res.json();
+
+    if (data.success) {
+      setPlans(prev =>
+        prev.map(p =>
+          p.planId === planId
+            ? { ...p, isActive: false }
+            : p
+        )
+      );
+
+      setGroups(prev =>
+        prev.map(g => ({
+          ...g,
+          plans: g.plans.map(p =>
+            p.planId === planId
+              ? { ...p, isActive: false }
+              : p
+          ),
+        }))
+      );
+
+      Swal.fire(
+        'Deactivated!',
+        `"${title}" has been deactivated.`,
+        'success'
+      );
+    }
+  } catch (err) {
+    console.error('Error deactivating plan:', err);
+
+    Swal.fire(
+      'Error',
+      'Something went wrong while deactivating the plan.',
+      'error'
+    );
+  }
+};
   // Plans that are not in any group
   const groupedPlanIds = new Set(groups.flatMap(g => g.plans.map(p => p.planId)));
   const ungroupedPlans = plans
@@ -420,6 +492,7 @@ const LJRPlansList = () => {
                 onEditPlan={(planId) => router.push(`/manage-report-pricing/edit/${planId}`)}
                 onEditGroup={(groupId) => router.push(`/manage-report-pricing/edit-group/${groupId}`)}
                 onDeleteGroup={handleDeleteGroup}
+                onDeletePlan={handleDelete}
               />
             ))}
 
@@ -441,6 +514,7 @@ const LJRPlansList = () => {
                     plan={plan}
                     onToggle={handleTogglePlan}
                     onEdit={(planId) => router.push(`/manage-report-pricing/edit/${planId}`)}
+                    onDelete={handleDelete}
                   />
                 ))}
               </div>
@@ -466,6 +540,7 @@ const LJRPlansList = () => {
                 plan={plan}
                 onToggle={handleTogglePlan}
                 onEdit={(planId) => router.push(`/manage-report-pricing/edit/${planId}`)}
+                onDelete={handleDelete}
               />
             ))}
           {plans.length === 0 && (
