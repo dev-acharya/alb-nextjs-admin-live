@@ -466,6 +466,8 @@ const debouncedFetch = useMemo(() =>
       
       reportLanguage: { label: 'Language' },
       expressDelivery: { label: 'Express Delivery' },
+      questionOne: { label: 'Question 1' },
+      questionTwo: { label: 'Question 2' },
       astroConsultation: { label: 'Consultation' },
       assignedAstrologerId: { 
         label: 'Astrologer', 
