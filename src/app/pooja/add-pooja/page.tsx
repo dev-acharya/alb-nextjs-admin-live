@@ -32,6 +32,7 @@ interface Category {
 interface InputFieldDetail {
   categoryId: string;
   pujaName: string;
+  pujaDay?: string;
   price: string;
   adminCommission: string;
   overview: string;
@@ -150,6 +151,7 @@ const AddPujaContent = () => {
   const [inputFieldDetail, setInputFieldDetail] = useState<InputFieldDetail>({
     categoryId: '',
     pujaName: '',
+    pujaDay: '',
     price: '',
     adminCommission: '',
     overview: '',
@@ -347,6 +349,7 @@ const AddPujaContent = () => {
           setInputFieldDetail({
             categoryId: pujaData.categoryId || '',
             pujaName: pujaData.title || pujaData.pujaName || '',
+            pujaDay: pujaData.pujaDay || '',
             price: pujaData.price?.toString() || '',
             adminCommission: pujaData.adminCommission?.toString() || '',
             overview: pujaData.overview || '',
