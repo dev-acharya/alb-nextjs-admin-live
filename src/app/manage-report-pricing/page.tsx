@@ -25,6 +25,7 @@ interface Plan {
     astroConsultation: Addon;
     expressDelivery: Addon;
   };
+  features: string[];
 }
 
 interface PlanGroup {
@@ -127,6 +128,24 @@ const PlanCard = ({
         </span>
       </div>
     </div>
+
+    {/* Features */}
+    {plan.features && plan.features.length > 0 && (
+      <div className="space-y-1">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Features</p>
+        <div className="space-y-1">
+          {plan.features.slice(0, 3).map((feature, idx) => (
+            <p key={idx} className="text-xs text-gray-600 flex items-start gap-1.5">
+              <span className="text-green-500">✓</span>
+              {feature}
+            </p>
+          ))}
+          {plan.features.length > 3 && (
+            <p className="text-xs text-gray-400">+{plan.features.length - 3} more</p>
+          )}
+        </div>
+      </div>
+    )}
 
     <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
       <button
