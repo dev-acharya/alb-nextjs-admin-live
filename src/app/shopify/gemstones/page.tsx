@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import moment from "moment";
 import {
   Dialog, DialogContent, DialogTitle, IconButton,
@@ -44,11 +44,17 @@ interface UploadModalState {
   driveLink: string | null;
 }
 
-const deepSearch = <T,>(data: T[], searchText: string): T[] => {
-  if (!searchText) return data;
-  const lower = searchText.toLowerCase();
-  return data.filter((item) => JSON.stringify(item).toLowerCase().includes(lower));
-};
+interface PaginatedResponse {
+  success: boolean;
+  count: number;
+  totalOrders: number;
+  currentPage: number;
+  totalPages: number;
+  limit: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+  data: ShopifyOrder[];
+}
 
 const statusColor: Record<string, "success" | "warning" | "default"> = {
   Paid: "success",
@@ -58,45 +64,98 @@ const statusColor: Record<string, "success" | "warning" | "default"> = {
 
 const ShopifyOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<ShopifyOrder[]>([]);
-  const [filteredData, setFilteredData] = useState<ShopifyOrder[]>([]);
-  const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
-
-  const [statusFilter, setStatusFilter] = useState("");
-  const [gemstoneFilter, setGemstoneFilter] = useState<any>(true);
+  const [totalOrders, setTotalOrders] = useState(0);
+  
+  // Filters state - By default "Paid" status
+  const [statusFilter, setStatusFilter] = useState("Paid");
+  const [gemstoneFilter, setGemstoneFilter] = useState<string>("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [searchText, setSearchText] = useState("");
+  
+  // Separate state for API call trigger
+  const [searchTrigger, setSearchTrigger] = useState("");
+  
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [uploadModal, setUploadModal] = useState<UploadModalState>({
     open: false, order: null, uploading: false, progress: 0, driveLink: null
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  const fetchOrders = async () => {
+  // Function to fetch orders
+  const fetchOrders = useCallback(async (page: number = 1, limit: number = 10) => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
+      
       if (statusFilter) params.append("status", statusFilter);
-      if (gemstoneFilter !== "") params.append("is_gemstone", gemstoneFilter.toString());
+      if (gemstoneFilter !== "") params.append("is_gemstone", gemstoneFilter);
       if (startDate && endDate) {
         params.append("startDate", startDate);
         params.append("endDate", endDate);
       }
+      if (searchTrigger) params.append("search", searchTrigger);
+      
+      params.append("page", page.toString());
+      params.append("limit", limit.toString());
+
+      console.log("Fetching with search:", searchTrigger); // Debug log
 
       const res = await fetch(`${base_url}api/admin/shopify-orders?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch");
-      const data = await res.json();
-      setOrders(data.data || []);
-      setFilteredData(data.data || []);
+      
+      const response: PaginatedResponse = await res.json();
+      
+      setOrders(response.data || []);
+      setTotalOrders(response.totalOrders);
     } catch (err) {
       console.error("Error fetching shopify orders:", err);
+      Swal.fire({
+        icon: "error",
+        title: "Error",
+        text: "Failed to fetch orders",
+        timer: 2000,
+      });
     } finally {
       setLoading(false);
     }
+  }, [statusFilter, gemstoneFilter, startDate, endDate, searchTrigger]);
+
+  // Handle search input - continuous typing allowed
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchText(value); // Immediate UI update - no lag
+    
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    // Set new timeout to trigger API call after user stops typing
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearchTrigger(value);
+    }, 500);
   };
 
-  useEffect(() => { fetchOrders(); }, [statusFilter, gemstoneFilter, startDate, endDate]);
-  useEffect(() => { setFilteredData(deepSearch(orders, searchText)); }, [searchText, orders]);
+  // Fetch when filters change
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    setSearchTrigger(searchText);
+    fetchOrders(1, 10);
+  }, [statusFilter, gemstoneFilter, startDate, endDate]);
+
+  // Fetch when search trigger changes
+  useEffect(() => {
+    fetchOrders(1, 10);
+  }, [searchTrigger]);
+
+  const handlePageChange = (page: number, limit: number) => {
+    fetchOrders(page, limit);
+  };
 
   const openUploadModal = (order: ShopifyOrder) => {
     setSelectedFile(null);
@@ -145,7 +204,9 @@ const ShopifyOrdersPage: React.FC = () => {
       }));
 
       setSelectedFile(null);
-      fetchOrders();
+      
+      // Refresh current page after upload
+      await fetchOrders(1, 10);
 
       Swal.fire({
         icon: "success",
@@ -162,7 +223,29 @@ const ShopifyOrdersPage: React.FC = () => {
     }
   };
 
-  const columns: TableColumn<ShopifyOrder>[] = useMemo(() => [
+  const handleClearFilters = () => {
+    setStatusFilter("Paid");
+    setGemstoneFilter("");
+    setStartDate("");
+    setEndDate("");
+    setSearchText("");
+    setSearchTrigger("");
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Define columns for the datatable
+  const columns: TableColumn<ShopifyOrder>[] = [
     {
       name: "S.No.",
       selector: (_row, index) => (index !== undefined ? index + 1 : 0),
@@ -170,12 +253,9 @@ const ShopifyOrdersPage: React.FC = () => {
     },
     {
       name: "Order No.",
-      cell: (row) => (
-        <span className="font-medium text-sm">
-          {row.shopify_order_data?.name || row.shopify_order_id || "-"}
-        </span>
-      ),
+      selector: (row) => row.shopify_order_data?.name || row.shopify_order_id || "-",
       width: "110px",
+      sortable: true,
     },
     {
       name: "Customer",
@@ -194,7 +274,7 @@ const ShopifyOrdersPage: React.FC = () => {
         const items: LineItem[] = row.shopify_order_data?.line_items || [];
         return (
           <div className="py-1">
-            {items.map((item, i) => (
+            {items.slice(0, 2).map((item, i) => (
               <div key={i} className="text-xs mb-1">
                 <span className="font-medium">{item.title}</span>
                 {item.variant_title && item.variant_title !== item.title && (
@@ -203,6 +283,9 @@ const ShopifyOrdersPage: React.FC = () => {
                 <span className="text-gray-500"> × {item.quantity}</span>
               </div>
             ))}
+            {items.length > 2 && (
+              <div className="text-xs text-gray-400">+{items.length - 2} more</div>
+            )}
           </div>
         );
       },
@@ -221,6 +304,7 @@ const ShopifyOrdersPage: React.FC = () => {
         </div>
       ),
       width: "110px",
+      sortable: true,
     },
     {
       name: "Status",
@@ -296,6 +380,7 @@ const ShopifyOrdersPage: React.FC = () => {
       name: "Date",
       selector: (row) => moment(row.createdAt).format("DD/MM/YY HH:mm"),
       width: "120px",
+      sortable: true,
     },
     {
       name: "Action",
@@ -321,69 +406,76 @@ const ShopifyOrdersPage: React.FC = () => {
       ),
       width: "110px",
     },
-  ], []);
+  ];
+
+  // Custom filter bar component with improved search
+  const FiltersBar = () => (
+    <div className="flex flex-wrap gap-3 items-center">
+      <select
+        value={statusFilter}
+        onChange={(e) => setStatusFilter(e.target.value)}
+        className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+      >
+        <option value="">All Status</option>
+        <option value="Paid">Paid</option>
+        <option value="Unpaid">Unpaid</option>
+        <option value="Initiated">Initiated</option>
+      </select>
+
+      <select
+        value={gemstoneFilter}
+        onChange={(e) => setGemstoneFilter(e.target.value)}
+        className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+      >
+        <option value="">All Types</option>
+        <option value="true">Gemstone Only</option>
+        <option value="false">Non-Gemstone</option>
+      </select>
+
+      <input
+        type="date"
+        value={startDate}
+        onChange={(e) => setStartDate(e.target.value)}
+        className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+      />
+      <input
+        type="date"
+        value={endDate}
+        onChange={(e) => setEndDate(e.target.value)}
+        className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+      />
+
+      {/* <input
+        type="text"
+        placeholder="Search name / email / phone..."
+        value={searchText}
+        onChange={handleSearchChange}
+        className="border rounded-md px-3 py-1.5 text-sm w-60 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        autoComplete="off"
+      /> */}
+
+      {(statusFilter !== "Paid" || gemstoneFilter || startDate || endDate || searchText) && (
+        <button
+          onClick={handleClearFilters}
+          className="text-xs text-red-500 hover:text-red-700 underline whitespace-nowrap"
+        >
+          Clear Filters
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <>
-      {/* Filters Bar */}
-      <div className="flex flex-wrap gap-3 px-4 pt-4 pb-2 bg-white border-b">
-        <input
-          type="text"
-          placeholder="Search name / email / phone..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          className="border rounded-md px-3 py-1.5 text-sm w-60 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        >
-          <option value="">All Status</option>
-          <option value="Paid">Paid</option>
-          <option value="Unpaid">Unpaid</option>
-          <option value="Initiated">Initiated</option>
-        </select>
-
-        <select
-          value={gemstoneFilter}
-          onChange={(e) => setGemstoneFilter(e.target.value)}
-          className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        >
-          <option value="">All Types</option>
-          <option value="true">Gemstone Only</option>
-          <option value="false">Non-Gemstone</option>
-        </select>
-
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          className="border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
-
-        {(statusFilter || gemstoneFilter || startDate || endDate) && (
-          <button
-            onClick={() => { setStatusFilter(""); setGemstoneFilter(""); setStartDate(""); setEndDate(""); }}
-            className="text-xs text-red-500 hover:text-red-700 underline"
-          >
-            Clear Filters
-          </button>
-        )}
-      </div>
-
       <MainDatatable
         title="Shopify Orders"
         columns={columns as any}
-        data={filteredData}
+        data={orders}
         isLoading={loading}
+        showSearch={false}
+        fileName="shopify-orders"
+        exportHeaders={true}
+        leftFilters={<FiltersBar />}
       />
 
       {/* Upload Modal */}
@@ -399,7 +491,6 @@ const ShopifyOrdersPage: React.FC = () => {
         <DialogContent>
           {uploadModal.order && (
             <div className="space-y-4 py-2">
-
               {/* Customer Info */}
               <div className="bg-gray-50 rounded-lg p-3 text-sm">
                 <div className="font-semibold text-gray-700 mb-1">Customer</div>
@@ -457,7 +548,6 @@ const ShopifyOrdersPage: React.FC = () => {
                   {uploadModal.uploading ? "Uploading..." : "Upload to Drive & Send Link"}
                 </button>
               )}
-
             </div>
           )}
         </DialogContent>
