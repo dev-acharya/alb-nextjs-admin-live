@@ -491,7 +491,7 @@ const PujaBookingsPage = () => {
                     {data.paymentDetails.razorpayAmount && (
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">Amount Paid</span>
-                        <span className="text-sm font-semibold text-green-700">{formatPrice(data.paymentDetails.razorpayAmount / 100)}</span>
+                        <span className="text-sm font-semibold text-green-700">{formatPrice(data.paymentDetails.razorpayAmount)}</span>
                       </div>
                     )}
                     {data.paymentDetails.razorpayPaymentMode && (
