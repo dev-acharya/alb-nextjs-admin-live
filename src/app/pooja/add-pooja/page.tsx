@@ -147,7 +147,8 @@ const AddPujaContent = () => {
   const [validationErrors, setValidationErrors] = useState<any[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [hasAttemptedNext, setHasAttemptedNext] = useState(false);
-
+  const [mobileImage, setMobileImage] = useState<ImageState>({ file: '', bytes: null, url: '' });
+  const [mobileImagePreview, setMobileImagePreview] = useState<string>('');
   // Main form state
   const [inputFieldDetail, setInputFieldDetail] = useState<InputFieldDetail>({
     categoryId: '',
@@ -446,6 +447,16 @@ const AddPujaContent = () => {
             }));
             setFaqs(mappedFaqs);
           }
+
+          if (pujaData.mobileImage) {
+            const imgUrl = pujaData.mobileImage;
+            setMobileImage({
+              file: imgUrl,
+              bytes: null,
+              url: `${process.env.NEXT_PUBLIC_IMAGE_URL3}${imgUrl}`
+            });
+            setMobileImagePreview(`${process.env.NEXT_PUBLIC_IMAGE_URL3}${imgUrl}`);
+          }
         }
       }
 
@@ -499,6 +510,16 @@ const AddPujaContent = () => {
       setImagePreview(previewUrl);
     }
   };
+
+  const handleMainImageUpload = (file: File, previewUrl: string) => {
+  setImage({ file: file.name, bytes: file, url: previewUrl });
+  setImagePreview(previewUrl);
+};
+
+const handleMobileImageUpload = (file: File, previewUrl: string) => {
+  setMobileImage({ file: file.name, bytes: file, url: previewUrl });
+  setMobileImagePreview(previewUrl);
+};
 
   // Handle gallery images
   const handleGalleryImages = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -659,6 +680,10 @@ const AddPujaContent = () => {
         }
       });
 
+      if (mobileImage.bytes) {
+        formData.append('mobileImage', mobileImage.bytes);
+      }
+
       const benefitsArray = benefits.map(benefit => benefit.trim()).filter(benefit => benefit !== '');
       formData.append("benefits", JSON.stringify(benefitsArray));
       
@@ -755,7 +780,11 @@ const AddPujaContent = () => {
       removePackageFeature,
       handlePopularPackageChange,
       editId,
-      fieldErrors
+      fieldErrors,
+      mobileImage,
+      mobileImagePreview,
+      handleMobileImageUpload,
+      handleMainImageUpload,
     };
 console.log("imaggggggggggggggggggggggggggggggggg", props.image.file)
     switch (activeTab) {
