@@ -33,6 +33,11 @@ const REDIRECT_OPTIONS = [
     value: "VideoTab",
     nav: `navigation.navigate('VideoTab', { screen: 'VideoTab' })`,
   },
+  {
+    label: "Astrologer",
+    value: "AstrologerDetailsScreen",
+    nav: `navigation.navigate('AstrologerDetailsScreen', { astrologerId: '...' })`,
+  },
 ] as const;
 
 type RedirectValue = (typeof REDIRECT_OPTIONS)[number]["value"];
@@ -277,7 +282,7 @@ function AddView({
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
+const [redirectParam, setRedirectParam] = useState("")
   // Crop state
   const [cropMode, setCropMode] = useState(false);
   const [cropPendingUrl, setCropPendingUrl] = useState<string | null>(null);
@@ -389,12 +394,17 @@ function AddView({
     if (!name.trim()) { addToast("error", "Name is required"); return; }
     if (!croppedFile) { addToast("error", "Upload and crop an image"); return; }
 
+
     setSaving(true);
     try {
       const slug = `askbandhu-${name
         .toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/[^a-z0-9-]/g, "")}-${Date.now()}`;
+
+        const description = redirectParam
+        ? JSON.stringify({ screen: redirect, params: { astrologerId: redirectParam } })
+        : redirect;
 
       await BannerAPI.create(
         {
@@ -411,7 +421,7 @@ function AddView({
           elements: [],
           status: "ACTIVE",
           priority: 0,
-          description: redirect,
+          description,
         },
         croppedFile
       );
@@ -480,6 +490,20 @@ if (cropMode && cropPendingUrl && cropPendingDims) {
             className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-400 placeholder:text-slate-300"
           />
         </div>
+
+        {redirect === "AstrologerDetailsScreen" && (
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+              Astrologer ID *
+            </label>
+            <input
+              value={redirectParam}
+              onChange={(e) => setRedirectParam(e.target.value)}
+              placeholder="e.g. 64f3a2b1c9e4f00012345678"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-violet-400"
+            />
+          </div>
+        )}
 
         {/* Page route */}
         <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
