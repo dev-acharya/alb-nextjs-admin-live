@@ -48,7 +48,10 @@ export const benefitsSchema = z.object({
       message: 'At least one valid benefit is required'
     }),
 });
-
+export const vedicProcedureSchema = z.object({
+  vedicProcedureTitle: z.string().min(3, 'Vedic procedure title must be at least 3 characters'),
+  vedicProcedureDescription: z.string().min(20, 'Vedic procedure description must be at least 20 characters'),
+});
 // Tab 3: Who Should Book Validation
 export const whoShouldBookSchema = z.object({
   whoShouldBook: z.array(z.string().min(1, 'Entry cannot be empty'))
@@ -167,20 +170,25 @@ export const validateTab = (tabIndex: number, data: any) => {
       case 2: // Benefits (UI Tab 2)
         benefitsSchema.parse(data);
         return { success: true, errors: null };
-      
-      case 3: // Who Should Book (UI Tab 3)
+       case 3: // Vedic Procedure (UI Tab 3) - NEW
+        vedicProcedureSchema.parse({
+          vedicProcedureTitle: data.vedicProcedureTitle || '',
+          vedicProcedureDescription: data.vedicProcedureDescription || ''
+        });
+        return { success: true, errors: null };
+      case 4: // Who Should Book (UI Tab 3)
         whoShouldBookSchema.parse(data);
         return { success: true, errors: null };
       
-      case 4: // Why You Should (UI Tab 4)
+      case 5: // Why You Should (UI Tab 4)
         whyYouShouldSchema.parse(data);
         return { success: true, errors: null };
       
-      case 5: // Packages (UI Tab 5)
+      case 6: // Packages (UI Tab 5)
         packagesSchema.parse(data);
         return { success: true, errors: null };
       
-      case 6: // Testimonials (UI Tab 6) - optional
+      case 7: // Testimonials (UI Tab 6) - optional
         if (data.testimonials && data.testimonials.length > 0) {
           testimonialsSchema.parse(data);
         }

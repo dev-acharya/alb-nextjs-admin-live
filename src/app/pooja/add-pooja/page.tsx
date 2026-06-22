@@ -3,8 +3,8 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Swal from "sweetalert2";
-import { 
-  Home, BookOpen, Images, Star, Target, Users, 
+import {
+  Home, BookOpen, Images, Star, Target, Users,
   BanknoteIcon, MessageSquare, Shield, Save, X,
   Upload, Plus, Trash2, CheckCircle, Loader2,
   ArrowLeft, Eye, AlertCircle
@@ -22,6 +22,7 @@ import WhoShouldBookTab from "@/components/puja/WhoShouldBookTab";
 import PackagesTab from "@/components/puja/PackagesTab";
 import TestimonialsTab from "@/components/puja/TestimonialsTab";
 import FAQsTab from "@/components/puja/FAQsTab";
+import VedicProcedureTab from "@/components/puja/VedicProcedureTab";
 
 // Types
 interface Category {
@@ -149,6 +150,10 @@ const AddPujaContent = () => {
   const [hasAttemptedNext, setHasAttemptedNext] = useState(false);
   const [mobileImage, setMobileImage] = useState<ImageState>({ file: '', bytes: null, url: '' });
   const [mobileImagePreview, setMobileImagePreview] = useState<string>('');
+  const [vedicProcedure, setVedicProcedure] = useState({
+    title: '',
+    description: ''
+  });
   // Main form state
   const [inputFieldDetail, setInputFieldDetail] = useState<InputFieldDetail>({
     categoryId: '',
@@ -164,38 +169,44 @@ const AddPujaContent = () => {
     mode: '',
     inclusion: '',
     purpose: '',
-    discountedPrice : '',
+    discountedPrice: '',
     subTitle: ''
   });
 
-  const [image, setImage] = useState<ImageState>({ 
-    file: '', 
-    bytes: null, 
-    url: '' 
+  const [image, setImage] = useState<ImageState>({
+    file: '',
+    bytes: null,
+    url: ''
   });
 
   // Dynamic arrays
-  const [benefits, setBenefits] = useState<string[]>(['']);
-  
-  const [whyYouShould, setWhyYouShould] = useState([
-    { 
-      _id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: '', 
-      description: '', 
-      icon: 'Target' 
+  const [benefits, setBenefits] = useState([
+    {
+      _id: `benefit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      title: '',
+      description: '',
+      icon: 'Star'
     }
   ]);
-  
+  const [whyYouShould, setWhyYouShould] = useState([
+    {
+      _id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      title: '',
+      description: '',
+      icon: 'Target'
+    }
+  ]);
+
   const [whoShouldBook, setWhoShouldBook] = useState<string[]>(['']);
-  
+
   const [pricingPackages, setPricingPackages] = useState<PricingPackage[]>([
     { id: 1, title: '', price: 0, isPopular: false, features: [''] }
   ]);
-  
+
   const [testimonials, setTestimonials] = useState<Testimonial[]>([
     { id: 1, highlight: '', quote: '', name: '', location: '' }
   ]);
-  
+
   const [faqs, setFaqs] = useState<FAQ[]>([
     { id: 1, question: '', answer: '' }
   ]);
@@ -209,11 +220,12 @@ const AddPujaContent = () => {
     { id: 0, label: 'Basic Info', icon: <Home className="w-4 h-4" /> },
     { id: 1, label: 'Details', icon: <BookOpen className="w-4 h-4" /> },
     { id: 2, label: 'Benefits', icon: <Star className="w-4 h-4" /> },
-    { id: 3, label: 'Who Should Book', icon: <Users className="w-4 h-4" /> },
-    { id: 4, label: 'Why Should You Perform', icon: <Target className="w-4 h-4" /> },
-    { id: 5, label: 'Packages', icon: <BanknoteIcon className="w-4 h-4" /> },
-    { id: 6, label: 'Testimonials', icon: <MessageSquare className="w-4 h-4" /> },
-    { id: 7, label: 'FAQs', icon: <MessageSquare className="w-4 h-4" /> },
+    { id: 3, label: 'Vedic Procedure', icon: <BookOpen className="w-4 h-4" /> },
+    { id: 4, label: 'Who Should Book', icon: <Users className="w-4 h-4" /> },
+    { id: 5, label: 'Why Should You Perform', icon: <Target className="w-4 h-4" /> },
+    { id: 6, label: 'Packages', icon: <BanknoteIcon className="w-4 h-4" /> },
+    { id: 7, label: 'Testimonials', icon: <MessageSquare className="w-4 h-4" /> },
+    { id: 8, label: 'FAQs', icon: <MessageSquare className="w-4 h-4" /> },
   ];
 
   // Validation function for current tab
@@ -227,47 +239,107 @@ const AddPujaContent = () => {
           mainImage: image
         };
         break;
-      
+
       case 1: // Details
         dataToValidate = {
           pujaDetails: inputFieldDetail.pujaDetails,
           whyPerform: inputFieldDetail.whyPerform
         };
         break;
-      
+
+      // In validateTab function, update case 2:
       case 2: // Benefits
-        dataToValidate = { benefits };
-        break;
-      
-      case 3: // Who Should Book
+        // Check if any benefit has a title
+        const hasValidBenefit = benefits.some(b => b.title?.trim());
+        if (!hasValidBenefit) {
+          setValidationErrors([{
+            path: 'benefits',
+            message: 'At least one benefit with a title is required.'
+          }]);
+          setFieldErrors({
+            'benefits': 'At least one benefit with a title is required.'
+          });
+          return { success: false, errors: [{ path: 'benefits', message: 'At least one benefit with a title is required.' }] };
+        }
+
+        // Check individual benefit titles
+        const benefitErrors: any[] = [];
+        benefits.forEach((b, index) => {
+          if (!b.title?.trim()) {
+            benefitErrors.push({
+              path: `benefits.${index}.title`,
+              message: `Benefit ${index + 1} title is required.`
+            });
+          }
+        });
+
+        if (benefitErrors.length > 0) {
+          setValidationErrors(benefitErrors);
+          const errors: Record<string, string> = {};
+          benefitErrors.forEach((err: any) => {
+            errors[err.path] = err.message;
+          });
+          setFieldErrors(errors);
+          return { success: false, errors: benefitErrors };
+        }
+
+        setValidationErrors([]);
+        setFieldErrors({});
+        return { success: true, errors: null };
+
+      case 3: // Vedic Procedure
+        if (!vedicProcedure.title?.trim()) {
+          setValidationErrors([{
+            path: 'vedicProcedure.title',
+            message: 'Vedic procedure title is required.'
+          }]);
+          setFieldErrors({
+            'vedicProcedure.title': 'Vedic procedure title is required.'
+          });
+          return { success: false, errors: [{ path: 'vedicProcedure.title', message: 'Vedic procedure title is required.' }] };
+        }
+        if (!vedicProcedure.description?.trim()) {
+          setValidationErrors([{
+            path: 'vedicProcedure.description',
+            message: 'Vedic procedure description is required.'
+          }]);
+          setFieldErrors({
+            'vedicProcedure.description': 'Vedic procedure description is required.'
+          });
+          return { success: false, errors: [{ path: 'vedicProcedure.description', message: 'Vedic procedure description is required.' }] };
+        }
+        setValidationErrors([]);
+        setFieldErrors({});
+        return { success: true, errors: null };
+      case 4: // Who Should Book
         dataToValidate = { whoShouldBook };
         break;
-      
-      case 4: // Why You Should
+
+      case 5: // Why You Should
         dataToValidate = { whyYouShould };
         break;
-      
-      case 5: // Packages
+
+      case 6: // Packages
         dataToValidate = { pricingPackages };
         break;
-      
-      case 6: // Testimonials (optional)
+
+      case 7: // Testimonials (optional)
         dataToValidate = { testimonials };
         break;
-      
-      case 7: // FAQs (optional)
+
+      case 8: // FAQs (optional)
         dataToValidate = { faqs };
         break;
-      
+
       default:
         return { success: true, errors: null };
     }
 
     const result = validateTab(activeTab, dataToValidate);
-    
+
     if (!result.success && result.errors) {
       setValidationErrors(result.errors);
-      
+
       // Create field errors map
       const errors: Record<string, string> = {};
       result.errors.forEach((err: any) => {
@@ -286,10 +358,10 @@ const AddPujaContent = () => {
   // Handle next tab
   const handleNextTab = () => {
     setHasAttemptedNext(true); // Mark that user tried to go next
-    
+
     const validation = validateCurrentTab();
 
-    
+
     if (validation.success) {
       setActiveTab(prev => Math.min(tabs.length - 1, prev + 1));
       setHasAttemptedNext(false); // Reset for next tab
@@ -309,28 +381,35 @@ const AddPujaContent = () => {
   const getCurrentTabData = () => {
     switch (activeTab) {
       case 0:
-        return { 
+        return {
           categoryId: inputFieldDetail.categoryId,
           pujaName: inputFieldDetail.pujaName,
           price: inputFieldDetail.price,
           adminCommission: inputFieldDetail.adminCommission,
           overview: inputFieldDetail.overview,
           duration: inputFieldDetail.duration,
-          mainImage: image 
+          mainImage: image
         };
       case 1:
         return { pujaDetails: inputFieldDetail.pujaDetails, whyPerform: inputFieldDetail.whyPerform };
       case 2:
-        return { benefits };
-      case 3:
-        return { whoShouldBook };
+        return {
+          benefits: benefits.map(b => b.title?.trim()).filter(title => title !== '')
+        };
+      case 3: // Vedic Procedure
+        return {
+          vedicProcedureTitle: vedicProcedure.title,
+          vedicProcedureDescription: vedicProcedure.description
+        };
       case 4:
-        return { whyYouShould };
+        return { whoShouldBook };
       case 5:
-        return { pricingPackages };
+        return { whyYouShould };
       case 6:
-        return { testimonials };
+        return { pricingPackages };
       case 7:
+        return { testimonials };
+      case 8:
         return { faqs };
       default:
         return {};
@@ -341,7 +420,7 @@ const AddPujaContent = () => {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      
+
       const categoriesData = await getCategories();
       setCategories(categoriesData);
 
@@ -361,14 +440,19 @@ const AddPujaContent = () => {
             pujaDetails: pujaData.pujaDetails || '',
             duration: pujaData.duration || '',
             mode: pujaData.mode || '',
-            inclusion: pujaData.inclusion || '',  
+            inclusion: pujaData.inclusion || '',
             purpose: pujaData.purpose || '',
-            discountedPrice : pujaData.discountedPrice?.toString() || '',
-            subTitle : pujaData.subTitle || ''
+            discountedPrice: pujaData.discountedPrice?.toString() || '',
+            subTitle: pujaData.subTitle || ''
           });
-
-          if ( pujaData.mainImage) {
-            const imgUrl =  pujaData.mainImage;
+          if (pujaData.vedicProcedure) {
+            setVedicProcedure({
+              title: pujaData.vedicProcedure.title || '',
+              description: pujaData.vedicProcedure.description || ''
+            });
+          }
+          if (pujaData.mainImage) {
+            const imgUrl = pujaData.mainImage;
             setImage({
               file: imgUrl,
               bytes: null,
@@ -384,23 +468,49 @@ const AddPujaContent = () => {
               description: item.description || '',
               icon: item.icon || 'Target'
             }));
-            
+
             setWhyYouShould(formattedWhyYouShould.length > 0 ? formattedWhyYouShould : [
-              { 
-                _id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, 
-                title: '', 
-                description: '', 
-                icon: 'Target' 
+              {
+                _id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                title: '',
+                description: '',
+                icon: 'Target'
               }
             ]);
           }
 
+          // In the useEffect where you fetch puja data, replace the benefits section:
+
           if (pujaData.benefits) {
-            if (typeof pujaData.benefits === 'string') {
-              const benefitsArray = pujaData.benefits.split(',').map((b: any) => b.trim()).filter((b: any) => b !== '');
-              setBenefits(benefitsArray.length > 0 ? benefitsArray : ['']);
-            } else if (Array.isArray(pujaData.benefits)) {
-              setBenefits(pujaData.benefits.filter((b: any) => b && b.trim() !== ''));
+            if (Array.isArray(pujaData.benefits) && pujaData.benefits.length > 0) {
+              // Check if it's old format (strings) or new format (objects)
+              if (typeof pujaData.benefits[0] === 'string') {
+                // Old format: convert strings to objects
+                const formattedBenefits = pujaData.benefits.map((benefit: string, index: number) => ({
+                  _id: `benefit_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+                  title: benefit,
+                  description: '',
+                  icon: 'Star'
+                }));
+                setBenefits(formattedBenefits);
+              } else {
+                // New format: already objects
+                const formattedBenefits = pujaData.benefits.map((benefit: any, index: number) => ({
+                  _id: benefit._id || `benefit_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+                  title: benefit.title || '',
+                  description: benefit.description || '',
+                  icon: benefit.icon || 'Star'
+                }));
+                setBenefits(formattedBenefits);
+              }
+            } else {
+              // Empty benefits - keep one empty benefit
+              setBenefits([{
+                _id: `benefit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                title: '',
+                description: '',
+                icon: 'Star'
+              }]);
             }
           }
 
@@ -472,12 +582,12 @@ const AddPujaContent = () => {
     if (hasAttemptedNext) {
       validateCurrentTab();
     }
-  }, [inputFieldDetail, image, benefits, whoShouldBook, whyYouShould, pricingPackages, testimonials, faqs, activeTab, hasAttemptedNext]);
+  }, [inputFieldDetail, image, benefits, whoShouldBook, whyYouShould, pricingPackages, testimonials, faqs, vedicProcedure, activeTab, hasAttemptedNext]);
 
   // Handle input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
-    
+
     if (type === 'checkbox') {
       const checked = (e.target as HTMLInputElement).checked;
       setInputFieldDetail(prev => ({ ...prev, [name]: checked }));
@@ -512,21 +622,21 @@ const AddPujaContent = () => {
   };
 
   const handleMainImageUpload = (file: File, previewUrl: string) => {
-  setImage({ file: file.name, bytes: file, url: previewUrl });
-  setImagePreview(previewUrl);
-};
+    setImage({ file: file.name, bytes: file, url: previewUrl });
+    setImagePreview(previewUrl);
+  };
 
-const handleMobileImageUpload = (file: File, previewUrl: string) => {
-  setMobileImage({ file: file.name, bytes: file, url: previewUrl });
-  setMobileImagePreview(previewUrl);
-};
+  const handleMobileImageUpload = (file: File, previewUrl: string) => {
+    setMobileImage({ file: file.name, bytes: file, url: previewUrl });
+    setMobileImagePreview(previewUrl);
+  };
 
   // Handle gallery images
   const handleGalleryImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
       setGalleryImages(prev => [...prev, ...files]);
-      
+
       files.forEach(file => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -589,7 +699,7 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
   };
 
   const updatePackageFeature = (packageId: number, featureIndex: number, value: string) => {
-    setPricingPackages(packages => 
+    setPricingPackages(packages =>
       packages.map(pkg => {
         if (pkg.id === packageId) {
           const newFeatures = [...pkg.features];
@@ -602,9 +712,9 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
   };
 
   const addPackageFeature = (packageId: number) => {
-    setPricingPackages(packages => 
-      packages.map(pkg => 
-        pkg.id === packageId 
+    setPricingPackages(packages =>
+      packages.map(pkg =>
+        pkg.id === packageId
           ? { ...pkg, features: [...pkg.features, ''] }
           : pkg
       )
@@ -612,7 +722,7 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
   };
 
   const removePackageFeature = (packageId: number, featureIndex: number) => {
-    setPricingPackages(packages => 
+    setPricingPackages(packages =>
       packages.map(pkg => {
         if (pkg.id === packageId) {
           const newFeatures = pkg.features.filter((_, i) => i !== featureIndex);
@@ -624,7 +734,7 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
   };
 
   const handlePopularPackageChange = (packageId: number) => {
-    setPricingPackages(packages => 
+    setPricingPackages(packages =>
       packages.map(pkg => ({
         ...pkg,
         isPopular: pkg.id === packageId
@@ -637,10 +747,16 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
     const validations = [
       { tab: 0, data: { ...inputFieldDetail, mainImage: image } },
       { tab: 1, data: { pujaDetails: inputFieldDetail.pujaDetails, whyPerform: inputFieldDetail.whyPerform } },
-      { tab: 2, data: { benefits } },
-      { tab: 3, data: { whoShouldBook } },
-      { tab: 4, data: { whyYouShould } },
-      { tab: 5, data: { pricingPackages } },
+      { tab: 2, data: { benefits: benefits.map(b => b.title?.trim()).filter(Boolean) } },
+      {
+        tab: 3, data: {
+          vedicProcedureTitle: vedicProcedure.title,
+          vedicProcedureDescription: vedicProcedure.description
+        }
+      },
+      { tab: 4, data: { whoShouldBook } },
+      { tab: 5, data: { whyYouShould } },
+      { tab: 6, data: { pricingPackages } },
     ];
 
     for (const { tab, data } of validations) {
@@ -648,11 +764,11 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
       if (!result.success) {
         setActiveTab(tab);
         setValidationErrors(result.errors || []);
-        
+
         Swal.fire({
           icon: 'error',
           title: `Please complete ${tabs[tab].label}`,
-          html: `<div style="text-align: left;">${result.errors?.map((err: any) => 
+          html: `<div style="text-align: left;">${result.errors?.map((err: any) =>
             `<p style="margin: 8px 0;">• ${err.message}</p>`
           ).join('')}</div>`,
           confirmButtonColor: '#dc2626'
@@ -666,14 +782,14 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
   // Submit handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateAllTabs()) return;
-    
+
     setSaving(true);
 
     try {
       const formData = new FormData();
-      
+
       Object.entries(inputFieldDetail).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           formData.append(key, value.toString());
@@ -683,13 +799,22 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
       if (mobileImage.bytes) {
         formData.append('mobileImage', mobileImage.bytes);
       }
+      if (vedicProcedure.title || vedicProcedure.description) {
+        formData.append('vedicProcedureTitle', vedicProcedure.title);
+        formData.append('vedicProcedureDescription', vedicProcedure.description);
+      }
 
-      const benefitsArray = benefits.map(benefit => benefit.trim()).filter(benefit => benefit !== '');
+      const benefitsArray = benefits.map(benefit => ({
+        title: benefit.title?.trim() || '',
+        description: benefit.description?.trim() || '',
+        icon: benefit.icon || 'Star'
+      })).filter(benefit => benefit.title !== '');
       formData.append("benefits", JSON.stringify(benefitsArray));
-      
+      // formData.append("benefits", JSON.stringify(benefitsArray));
+
       const whoShouldBookArray = whoShouldBook.map(item => item.trim()).filter(item => item !== '');
       formData.append("whoShouldBook", JSON.stringify(whoShouldBookArray));
-      
+
       formData.append("whyYouShould", JSON.stringify(
         whyYouShould.map(item => ({
           title: item.title,
@@ -697,7 +822,7 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
           icon: item.icon,
         }))
       ));
-      
+
       formData.append("pricingPackages", JSON.stringify(pricingPackages));
       formData.append("testimonials", JSON.stringify(testimonials));
       formData.append("faqs", JSON.stringify(faqs));
@@ -785,25 +910,44 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
       mobileImagePreview,
       handleMobileImageUpload,
       handleMainImageUpload,
+      vedicProcedure,
+      setVedicProcedure,
     };
-console.log("imaggggggggggggggggggggggggggggggggg", props.image.file)
+    console.log("imaggggggggggggggggggggggggggggggggg", props.image.file)
     switch (activeTab) {
       case 0:
         return <BasicInfoTab {...props} />;
       case 1:
         return <DetailsTab {...props} />;
       case 2:
-        return <BenefitsTab {...props} />;
-      case 3:
-        return <WhoShouldBookTab {...props} />;
-      case 4:
-        return <WhyPerformTab {...props} />;
-      case 5:
-        return <PackagesTab {...props} />;
-      case 6:
-        return <TestimonialsTab {...props} />;
-      case 7:
-        return <FAQsTab {...props} />;
+        return (
+          <BenefitsTab
+            benefits={benefits}
+            setBenefits={setBenefits}
+            addItem={addItem}
+            updateItem={updateItem}
+            removeItem={removeItem}
+            fieldErrors={fieldErrors}
+          />
+        );
+      case 3: // NEW: Vedic Procedure
+      return (
+        <VedicProcedureTab
+          vedicProcedure={vedicProcedure}
+          setVedicProcedure={setVedicProcedure}
+          fieldErrors={fieldErrors}
+        />
+      );
+    case 4:
+      return <WhoShouldBookTab {...props} />;
+    case 5:
+      return <WhyPerformTab {...props} />;
+    case 6:
+      return <PackagesTab {...props} />;
+    case 7:
+      return <TestimonialsTab {...props} />;
+    case 8:
+      return <FAQsTab {...props} />;
       default:
         return <BasicInfoTab {...props} />;
     }
@@ -831,13 +975,13 @@ console.log("imaggggggggggggggggggggggggggggggggg", props.image.file)
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
               {imagePreview && (
                 <div className="relative w-16 h-16 rounded-full overflow-hidden border-4 border-white shadow-lg">
-                  <img 
-                    src={`${process.env.NEXT_PUBLIC_IMAGE_URL3}${image.file}`} 
-                    alt="Puja" 
+                  <img
+                    src={`${process.env.NEXT_PUBLIC_IMAGE_URL3}${image.file}`}
+                    alt="Puja"
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -854,16 +998,15 @@ console.log("imaggggggggggggggggggggggggggggggggg", props.image.file)
             {tabs.map((tab) => {
               const tabData = getCurrentTabData();
               const isValid = validateTab(tab.id, tabData).success;
-              
+
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 whitespace-nowrap font-medium text-sm transition-colors border-b-2 relative ${
-                    activeTab === tab.id
-                      ? 'text-red-600 border-red-600 bg-red-50'
-                      : 'text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                  }`}
+                  className={`flex items-center gap-2 px-4 py-3 whitespace-nowrap font-medium text-sm transition-colors border-b-2 relative ${activeTab === tab.id
+                    ? 'text-red-600 border-red-600 bg-red-50'
+                    : 'text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                    }`}
                 >
                   {tab.icon}
                   {tab.label}
@@ -882,13 +1025,13 @@ console.log("imaggggggggggggggggggggggggggggggggg", props.image.file)
         <form onSubmit={handleSubmit}>
           <div className="bg-white rounded-xl shadow-lg p-6">
             {renderTabContent()}
-            
+
             {/* Navigation */}
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8 pt-6 border-t border-gray-200">
               <div className="text-sm text-gray-500">
                 Step {activeTab + 1} of {tabs.length}
               </div>
-              
+
               <div className="flex items-center gap-3">
                 <button
                   type="button"
@@ -899,15 +1042,14 @@ console.log("imaggggggggggggggggggggggggggggggggg", props.image.file)
                     setHasAttemptedNext(false); // Reset validation state
                   }}
                   disabled={activeTab === 0}
-                  className={`px-6 py-2.5 text-sm font-medium rounded-lg transition-all ${
-                    activeTab === 0 
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`px-6 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 0
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   Previous
                 </button>
-                
+
                 {activeTab < tabs.length - 1 ? (
                   <button
                     type="button"
