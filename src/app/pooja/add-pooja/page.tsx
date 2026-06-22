@@ -22,6 +22,7 @@ import WhoShouldBookTab from "@/components/puja/WhoShouldBookTab";
 import PackagesTab from "@/components/puja/PackagesTab";
 import TestimonialsTab from "@/components/puja/TestimonialsTab";
 import FAQsTab from "@/components/puja/FAQsTab";
+import RitualsTab from "@/components/puja/RitualsTab";
 
 // Types
 interface Category {
@@ -45,6 +46,7 @@ interface InputFieldDetail {
   purpose: string;
   discountedPrice?: string;
   subTitle?: string;
+  tag: string;
 }
 
 interface ImageState {
@@ -149,6 +151,26 @@ const AddPujaContent = () => {
   const [hasAttemptedNext, setHasAttemptedNext] = useState(false);
   const [mobileImage, setMobileImage] = useState<ImageState>({ file: '', bytes: null, url: '' });
   const [mobileImagePreview, setMobileImagePreview] = useState<string>('');
+  const [laptopImage, setLaptopImage] = useState<ImageState>({ file: '', bytes: null, url: '' });
+const [laptopImagePreview, setLaptopImagePreview] = useState<string>('');
+  const [benefitPoints, setBenefitPoints] = useState([
+  { 
+    id: 1, 
+    title: '', 
+    description: '', 
+    icon: 'Star' 
+  }
+]);
+// Sacred Rituals state
+const [sacredRituals, setSacredRituals] = useState([
+  { id: 1, icon: '', title: '', description: '' }
+]);
+
+// Aashirwad Box state (array of strings)
+const [aashirwadBox, setAashirwadBox] = useState<string[]>(['']);
+const [vedicProcedure, setVedicProcedure] = useState([
+  { id: 1, pointNumber: 1, title: '', description: '' }
+]);
   // Main form state
   const [inputFieldDetail, setInputFieldDetail] = useState<InputFieldDetail>({
     categoryId: '',
@@ -165,7 +187,8 @@ const AddPujaContent = () => {
     inclusion: '',
     purpose: '',
     discountedPrice : '',
-    subTitle: ''
+    subTitle: '',
+    tag: ""
   });
 
   const [image, setImage] = useState<ImageState>({ 
@@ -214,6 +237,7 @@ const AddPujaContent = () => {
     { id: 5, label: 'Packages', icon: <BanknoteIcon className="w-4 h-4" /> },
     { id: 6, label: 'Testimonials', icon: <MessageSquare className="w-4 h-4" /> },
     { id: 7, label: 'FAQs', icon: <MessageSquare className="w-4 h-4" /> },
+    {id: 8, label: "Rituals", icon:<Shield className="w-4 h-4" />}
   ];
 
   // Validation function for current tab
@@ -350,22 +374,23 @@ const AddPujaContent = () => {
         if (pujaData) {
           setPujaName(pujaData.title || pujaData.pujaName || '');
           setInputFieldDetail({
-            categoryId: pujaData.categoryId || '',
-            pujaName: pujaData.title || pujaData.pujaName || '',
-            pujaDay: pujaData.pujaDay || '',
-            pujaVenue: pujaData.pujaVenue || '',
-            price: pujaData.price?.toString() || '',
-            adminCommission: pujaData.adminCommission?.toString() || '',
-            overview: pujaData.overview || '',
-            whyPerform: pujaData.whyPerform || '',
-            pujaDetails: pujaData.pujaDetails || '',
-            duration: pujaData.duration || '',
-            mode: pujaData.mode || '',
-            inclusion: pujaData.inclusion || '',  
-            purpose: pujaData.purpose || '',
-            discountedPrice : pujaData.discountedPrice?.toString() || '',
-            subTitle : pujaData.subTitle || ''
-          });
+  categoryId: pujaData.categoryId || '',
+  pujaName: pujaData.title || pujaData.pujaName || '',
+  pujaDay: pujaData.pujaDay || '',
+  pujaVenue: pujaData.pujaVenue || '',
+  price: pujaData.price?.toString() || '',
+  adminCommission: pujaData.adminCommission?.toString() || '',
+  overview: pujaData.overview || '',
+  whyPerform: pujaData.whyPerform || '',
+  pujaDetails: pujaData.pujaDetails || '',
+  duration: pujaData.duration || '',
+  mode: pujaData.mode || '',
+  inclusion: pujaData.inclusion || '',  
+  purpose: pujaData.purpose || '',
+  discountedPrice : pujaData.discountedPrice?.toString() || '',
+  subTitle : pujaData.subTitle || '',
+  tag: pujaData.tag || ''  // ✅ ADD THIS
+});
 
           if ( pujaData.mainImage) {
             const imgUrl =  pujaData.mainImage;
@@ -519,6 +544,11 @@ const AddPujaContent = () => {
 const handleMobileImageUpload = (file: File, previewUrl: string) => {
   setMobileImage({ file: file.name, bytes: file, url: previewUrl });
   setMobileImagePreview(previewUrl);
+};
+
+const handleLaptopImageUpload = (file: File, previewUrl: string) => {
+  setLaptopImage({ file: file.name, bytes: file, url: previewUrl });
+  setLaptopImagePreview(previewUrl);
 };
 
   // Handle gallery images
@@ -683,6 +713,9 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
       if (mobileImage.bytes) {
         formData.append('mobileImage', mobileImage.bytes);
       }
+if (laptopImage.bytes) {
+  formData.append('laptopImage', laptopImage.bytes);
+}
 
       const benefitsArray = benefits.map(benefit => benefit.trim()).filter(benefit => benefit !== '');
       formData.append("benefits", JSON.stringify(benefitsArray));
@@ -710,6 +743,34 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
         formData.append("galleryImages", img);
       });
 
+      formData.append("benefitPoints", JSON.stringify(
+  benefitPoints.map(item => ({
+    title: item.title,
+    description: item.description,
+    icon: item.icon,
+  }))
+));
+formData.append("vedicProcedure", JSON.stringify(
+  vedicProcedure.map(item => ({
+    pointNumber: item.pointNumber,
+    title: item.title,
+    description: item.description,
+  }))
+));
+
+// ✅ Sacred Rituals
+formData.append("sacredRituals", JSON.stringify(
+  sacredRituals.map(item => ({
+    icon: item.icon,
+    title: item.title,
+    description: item.description,
+  }))
+));
+
+// ✅ Aashirwad Box (filter empty strings)
+formData.append("aashirwadBox", JSON.stringify(
+  aashirwadBox.filter(msg => msg.trim() !== '')
+));
       let success;
       if (editId) {
         success = await updatePuja(editId, formData);
@@ -754,6 +815,19 @@ const handleMobileImageUpload = (file: File, previewUrl: string) => {
       handleInputChange,
       categories,
       benefits,
+       laptopImage,//rituals
+  setLaptopImage,//rituals
+  laptopImagePreview,//rituals
+  setLaptopImagePreview,//rituals
+  handleLaptopImageUpload,//rituals
+      benefitPoints,//rituals
+  setBenefitPoints,//rituals
+  vedicProcedure,//rituals
+  setVedicProcedure,//rituals
+   sacredRituals,//rituals
+  setSacredRituals,//rituals
+  aashirwadBox,//rituals
+  setAashirwadBox,//rituals
       setBenefits,
       whyYouShould,
       setWhyYouShould,
@@ -804,6 +878,20 @@ console.log("imaggggggggggggggggggggggggggggggggg", props.image.file)
         return <TestimonialsTab {...props} />;
       case 7:
         return <FAQsTab {...props} />;
+      case 8:
+        return <RitualsTab 
+          {...props}
+    setMobileImage={setMobileImage}     
+    mobileImage={mobileImage}
+    setMobileImagePreview={setMobileImagePreview}
+    laptopImage={laptopImage}
+    setLaptopImage={setLaptopImage}
+    laptopImagePreview={laptopImagePreview}
+    setLaptopImagePreview={setLaptopImagePreview}
+    handleLaptopImageUpload={handleLaptopImageUpload}
+     benefitPoints={benefitPoints}
+    setBenefitPoints={setBenefitPoints}
+        />;
       default:
         return <BasicInfoTab {...props} />;
     }
