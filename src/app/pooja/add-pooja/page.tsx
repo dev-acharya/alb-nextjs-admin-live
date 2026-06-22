@@ -861,21 +861,35 @@ if (pujaData.about) {
 
   // Final validation before submit
   const validateAllTabs = () => {
-    const validations = [
-      { tab: 0, data: { ...inputFieldDetail, mainImage: image } },
-      { tab: 1, data: { pujaDetails: inputFieldDetail.pujaDetails, whyPerform: inputFieldDetail.whyPerform } },
-      { tab: 2, data: { benefits: benefits.map(b => b.title?.trim()).filter(Boolean) } },
-      {
-        tab: 3, data: {
-          vedicProcedureTitle: vedicProcedure.title,
-          vedicProcedureDescription: vedicProcedure.description
-        }
-      },
-      { tab: 4, data: { whoShouldBook } },
-      { tab: 5, data: { whyYouShould } },
-      { tab: 6, data: { pricingPackages } },
-    ];
-
+  const validations = [
+  { tab: 0, data: { ...inputFieldDetail, mainImage: image } },
+  { tab: 1, data: { pujaDetails: inputFieldDetail.pujaDetails, whyPerform: inputFieldDetail.whyPerform } },
+  { 
+    tab: 2, 
+    data: { 
+      benefits: benefits.map(b => ({ 
+        title: b.title?.trim() || '', 
+        description: b.description?.trim() || '', 
+        icon: b.icon || 'Star' 
+      })).filter(b => b.title !== '') 
+    } 
+  },
+  {
+    tab: 3, data: {
+      vedicProcedureTitle: vedicProcedure.title,
+      vedicProcedureDescription: vedicProcedure.description
+    }
+  },
+  { tab: 4, data: { whoShouldBook } },
+  { tab: 5, data: { whyYouShould } },
+  { tab: 6, data: { whyPerformReasons } },  // ✅ was pricingPackages before
+  { tab: 7, data: { aashirwadBox } },
+  { tab: 8, data: { ritualProcess } },
+  { tab: 9, data: { pricingPackages } },    // ✅ moved to correct tab
+  { tab: 10, data: { testimonials } },
+  { tab: 11, data: { faqs } },
+  { tab: 12, data: { about } },
+];
     for (const { tab, data } of validations) {
       const result = validateTab(tab, data);
       if (!result.success) {
