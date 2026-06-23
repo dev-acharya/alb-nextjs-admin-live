@@ -283,6 +283,15 @@ const [vedicProcedure, setVedicProcedure] = useState([
         dataToValidate = { faqs };
         break;
       
+      case 8: // Rituals (optional)
+        dataToValidate = {
+          benefitPoints,
+          vedicProcedure,
+          sacredRituals,
+          aashirwadBox,
+        };
+        break;
+      
       default:
         return { success: true, errors: null };
     }
@@ -313,12 +322,13 @@ const [vedicProcedure, setVedicProcedure] = useState([
     
     const validation = validateCurrentTab();
 
-    
     if (validation.success) {
-      setActiveTab(prev => Math.min(tabs.length - 1, prev + 1));
-      setHasAttemptedNext(false); // Reset for next tab
-      setFieldErrors({}); // Clear errors when moving to next tab
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => {
+        setActiveTab(prev => Math.min(tabs.length - 1, prev + 1));
+        setHasAttemptedNext(false); // Reset for next tab
+        setFieldErrors({}); // Clear errors when moving to next tab
+      }, 0);
     } else {
       console.log('Field errors should be:', fieldErrors);
     }
@@ -356,6 +366,13 @@ const [vedicProcedure, setVedicProcedure] = useState([
         return { testimonials };
       case 7:
         return { faqs };
+      case 8:
+        return {
+          benefitPoints,
+          vedicProcedure,
+          sacredRituals,
+          aashirwadBox,
+        };
       default:
         return {};
     }
@@ -963,8 +980,14 @@ formData.append("aashirwadBox", JSON.stringify(
               
               return (
                 <button
+                  type="button"
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setValidationErrors([]);
+                    setFieldErrors({});
+                    setHasAttemptedNext(false);
+                  }}
                   className={`flex items-center gap-2 px-4 py-3 whitespace-nowrap font-medium text-sm transition-colors border-b-2 relative ${
                     activeTab === tab.id
                       ? 'text-red-600 border-red-600 bg-red-50'
@@ -1014,34 +1037,36 @@ formData.append("aashirwadBox", JSON.stringify(
                   Previous
                 </button>
                 
-                {activeTab < tabs.length - 1 ? (
-                  <button
-                    type="button"
-                    onClick={handleNextTab}
-                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all"
-                  >
-                    Next Step
-                    <ArrowLeft className="w-4 h-4 rotate-180" />
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        {editId ? 'Updating...' : 'Creating...'}
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4" />
-                        {editId ? 'Update Puja' : 'Create Puja'}
-                      </>
-                    )}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleNextTab}
+                  className={`flex items-center gap-2 px-6 py-2.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all ${
+                    activeTab === tabs.length - 1 ? 'hidden' : ''
+                  }`}
+                >
+                  Next Step
+                  <ArrowLeft className="w-4 h-4 rotate-180" />
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving || activeTab !== tabs.length - 1}
+                  className={`flex items-center gap-2 px-6 py-2.5 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all ${
+                    activeTab !== tabs.length - 1 ? 'hidden' : ''
+                  }`}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {editId ? 'Updating...' : 'Creating...'}
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      {editId ? 'Update Puja' : 'Create Puja'}
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 

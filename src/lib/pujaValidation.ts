@@ -182,13 +182,23 @@ export const validateTab = (tabIndex: number, data: any) => {
       
       case 6: // Testimonials (UI Tab 6) - optional
         if (data.testimonials && data.testimonials.length > 0) {
-          testimonialsSchema.parse(data);
+          const testimonialsToValidate = data.testimonials.filter((item: any) =>
+            item.quote?.toString().trim() || item.name?.toString().trim() || item.location?.toString().trim()
+          );
+          if (testimonialsToValidate.length > 0) {
+            testimonialsSchema.parse({ testimonials: testimonialsToValidate });
+          }
         }
         return { success: true, errors: null };
       
       case 7: // FAQs (UI Tab 7) - optional
         if (data.faqs && data.faqs.length > 0) {
-          faqsSchema.parse(data);
+          const faqsToValidate = data.faqs.filter((item: any) =>
+            item.question?.toString().trim() || item.answer?.toString().trim()
+          );
+          if (faqsToValidate.length > 0) {
+            faqsSchema.parse({ faqs: faqsToValidate });
+          }
         }
         return { success: true, errors: null };
       
