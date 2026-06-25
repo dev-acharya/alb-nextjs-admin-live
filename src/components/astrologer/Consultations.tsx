@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { Check, Plus, Trash2, Clock, Save } from 'lucide-react';
+import Swal from 'sweetalert2';
 
 interface SlotDuration {
   _id: string;
@@ -737,7 +738,22 @@ const handleCancelEdit = () => {
             </button>
             <button
               type="button"
-              onClick={() => handleDeletePrice(price.duration)}
+              onClick={async () => {
+                const result = await Swal.fire({
+                  title: 'Delete Consultation Price?',
+                  text: `${slot?.slotDuration} min consultation at ₹${price.price} will be permanently removed.`,
+                  icon: 'warning',
+                  showCancelButton: true,
+                  confirmButtonColor: '#dc2626',
+                  cancelButtonColor: '#6b7280',
+                  confirmButtonText: 'Yes, Delete',
+                  cancelButtonText: 'Cancel',
+                });
+
+                if (result.isConfirmed) {
+                  handleDeletePrice(price.duration);
+                }
+              }}
               className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
               title="Delete"
             >
