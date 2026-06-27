@@ -786,6 +786,7 @@ const SectionEditor = ({
   allSections: Section[];
 }) => {
   const up = (patch: Partial<Section>) => onChange({ ...section, ...patch });
+  const draggedFieldIndex = useRef<number | null>(null); // ← ADD THIS
   const addField = () => up({ fields: [...section.fields, emptyField()] });
   const updateField = (i: number, f: FieldDef) => {
     const fields = [...section.fields];
@@ -798,6 +799,26 @@ const SectionEditor = ({
   const globalUsedKeys = new Set(
     allSections.flatMap(s => s.fields.map(f => f.key).filter(Boolean))
   );
+
+  const handleFieldDragStart = (index: number) => {
+    draggedFieldIndex.current = index;
+  };
+
+  const handleFieldDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedFieldIndex.current === null || draggedFieldIndex.current === index) return;
+
+    const newFields = [...section.fields];
+    const draggedItem = newFields[draggedFieldIndex.current];
+    newFields.splice(draggedFieldIndex.current, 1);
+    newFields.splice(index, 0, draggedItem);
+    draggedFieldIndex.current = index;
+    up({ fields: newFields });
+  };
+
+  const handleFieldDragEnd = () => {
+    draggedFieldIndex.current = null;
+  };
 
   return (
     <div className="border-2 border-gray-200 rounded-xl overflow-hidden mb-4">
@@ -892,8 +913,15 @@ const SectionEditor = ({
 
           <div className="space-y-3">
             {section.fields.map((field, fi) => (
+            <div
+              key={field._tempId}
+              draggable
+              onDragStart={() => handleFieldDragStart(fi)}
+              onDragOver={(e) => handleFieldDragOver(e, fi)}
+              onDragEnd={handleFieldDragEnd}
+              className="cursor-move"
+            >
               <FieldEditor
-                key={field._tempId}
                 field={field}
                 onChange={f => updateField(fi, f)}
                 onDelete={() => deleteField(fi)}
@@ -901,7 +929,8 @@ const SectionEditor = ({
                 fieldIndex={fi}
                 usedKeys={globalUsedKeys}
               />
-            ))}
+            </div>
+          ))}
           </div>
 
           <button type="button" onClick={addField}
@@ -1283,29 +1312,6 @@ const handleClone = async () => {
             onClick={() => setForm(prev => ({ ...prev, sections: [...prev.sections, emptySection()] }))}
             className="w-full py-3 border-2 border-dashed border-red-200 text-red-500 hover:border-red-400 hover:bg-red-50 rounded-xl text-sm transition-all flex items-center justify-center gap-2 font-medium">
             <Plus className="w-4 h-4" /> Add section
-          </button>
-        </div>
-      )}
-
-      {/* Addons tab */}
-      {activeTab === 'addons' && (
-        <div>
-          <p className="text-sm text-gray-500 mb-4">
-            Add-ons appear as checkboxes below the main form. Each addon can reveal additional fields when checked.
-          </p>
-          {form.addons.map((addon, ai) => (
-            <AddonEditor
-              key={addon._tempId}
-              addon={addon}
-              onChange={a => upAddon(ai, a)}
-              onDelete={() => setForm(prev => ({ ...prev, addons: prev.addons.filter((_, i) => i !== ai) }))}
-              allSections={form.sections}
-            />
-          ))}
-          <button type="button"
-            onClick={() => setForm(prev => ({ ...prev, addons: [...prev.addons, emptyAddon()] }))}
-            className="w-full py-3 border-2 border-dashed border-amber-200 text-amber-600 hover:border-amber-400 hover:bg-amber-50 rounded-xl text-sm transition-all flex items-center justify-center gap-2 font-medium">
-            <Plus className="w-4 h-4" /> Add addon
           </button>
         </div>
       )}
