@@ -771,7 +771,7 @@ export default function NotificationCampaigns() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  {['#', 'Title / Body', 'Image', 'Target', 'Scheduled at', 'Status', 'Sent / Failed', 'Action'].map(h => (
+                  {['#', 'Title / Body', 'Image', 'Target', 'Scheduled at', 'Status', 'Action'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -813,7 +813,7 @@ export default function NotificationCampaigns() {
                       <p className="text-xs text-gray-400">{moment(campaign.scheduledAt).format('hh:mm A')}</p>
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={campaign.status} /></td>
-                    <td className="px-4 py-3">
+                    {/* <td className="px-4 py-3">
                       {campaign.status === 'pending' ? (
                         <span className="text-gray-300 text-xs">-</span>
                       ) : (
@@ -833,7 +833,7 @@ export default function NotificationCampaigns() {
                           </span>
                         </div>
                       )}
-                    </td>
+                    </td> */}
                     <td className="px-4 py-3">
                       {campaign.status === 'pending' ? (
                         <div className="flex items-center gap-1">
