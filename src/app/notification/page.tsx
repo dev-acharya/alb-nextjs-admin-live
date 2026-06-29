@@ -33,9 +33,11 @@ interface FormErrors {
   body: string;
   scheduledAt: string;
   phones: string;
+  imageUrl: string;
 }
 
 const DRAFT_KEY = 'notif_campaign_draft';
+const IMAGE_MAX_MB = 2;
 
 const INITIAL_FORM: FormState = {
   title: '',
@@ -51,6 +53,7 @@ const INITIAL_ERRORS: FormErrors = {
   body: '',
   scheduledAt: '',
   phones: '',
+  imageUrl: '',
 };
 
 function loadDraft(): { form: FormState; phones: string[] } | null {
@@ -116,21 +119,31 @@ export default function NotificationCampaigns() {
   const [showForm, setShowForm] = useState(true);
   const [eligibleCount, setEligibleCount] = useState<number | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
+
+  // Image upload state
+  const [imagePreview, setImagePreview] = useState('');
+  const [imageUploading, setImageUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
   const phoneInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const targetedCount =
     eligibleCount !== null ? Math.round((form.percentage / 100) * eligibleCount) : null;
 
+  // ── Draft restore on mount ──────────────────────────────────────────────
   useEffect(() => {
     const draft = loadDraft();
     if (draft) {
       setForm(draft.form);
       setPhones(draft.phones);
+      if (draft.form.imageUrl) setImagePreview(draft.form.imageUrl);
       setDraftRestored(true);
       setTimeout(() => setDraftRestored(false), 4000);
     }
   }, []);
 
+  // ── Auto-save draft on every change ────────────────────────────────────
   useEffect(() => {
     saveDraft(form, phones);
   }, [form, phones]);
@@ -176,6 +189,63 @@ export default function NotificationCampaigns() {
     setForm(prev => ({ ...prev, percentage: Number(e.target.value) }));
   };
 
+  // ── Image upload helpers ────────────────────────────────────────────────
+  const uploadImage = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setErrors(prev => ({ ...prev, imageUrl: 'Please select a valid image file.' }));
+      return;
+    }
+    if (file.size > IMAGE_MAX_MB * 1024 * 1024) {
+      setErrors(prev => ({ ...prev, imageUrl: `Image must be under ${IMAGE_MAX_MB}MB.` }));
+      return;
+    }
+
+    setImageUploading(true);
+    setErrors(prev => ({ ...prev, imageUrl: '' }));
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const uploadRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/upload-image`,
+        { method: 'POST', body: formData, credentials: 'include' }
+      );
+      const uploadData = await uploadRes.json();
+
+      if (uploadData.success && uploadData.url) {
+        setForm(prev => ({ ...prev, imageUrl: uploadData.url }));
+        setImagePreview(uploadData.url);
+      } else {
+        setErrors(prev => ({ ...prev, imageUrl: 'Upload failed. Try again.' }));
+      }
+    } catch {
+      setErrors(prev => ({ ...prev, imageUrl: 'Upload failed. Check your connection.' }));
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadImage(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadImage(file);
+  };
+
+  const removeImage = () => {
+    setForm(prev => ({ ...prev, imageUrl: '' }));
+    setImagePreview('');
+    setErrors(prev => ({ ...prev, imageUrl: '' }));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // ── Phone helpers ───────────────────────────────────────────────────────
   const addPhone = () => {
     const num = phoneInput.trim();
     if (!num) return;
@@ -203,9 +273,12 @@ export default function NotificationCampaigns() {
     setForm(INITIAL_FORM);
     setPhones([]);
     setErrors(INITIAL_ERRORS);
+    setImagePreview('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
     clearDraft();
   };
 
+  // ── Submit ──────────────────────────────────────────────────────────────
   const handleCreate = async (mode: 'now' | 'schedule' = 'schedule') => {
     const newErrors = { ...INITIAL_ERRORS };
     let valid = true;
@@ -329,7 +402,7 @@ export default function NotificationCampaigns() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center shadow-sm flex-shrink-0">
-            <img src="/logo2.png" alt="image" className=' w-10 h-10 rounded-xl' />
+            <img src="/logo2.png" alt="image" className="w-10 h-10 rounded-xl" />
           </div>
           <div>
             <h1 className="text-xl font-semibold text-gray-900 leading-tight">Notification Campaigns</h1>
@@ -392,37 +465,21 @@ export default function NotificationCampaigns() {
 
           <div className="p-6 space-y-5">
 
-            {/* Title + Image */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Notification title <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="title"
-                  value={form.title}
-                  onChange={handleFormChange}
-                  placeholder="e.g. Special offer just for you!"
-                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-100 transition
-                    ${errors.title ? 'border-red-400' : 'border-gray-300 focus:border-red-400'}`}
-                />
-                {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Image URL <span className="text-xs font-normal text-gray-400 ml-1">(optional)</span>
-                </label>
-                <input
-                  type="url"
-                  name="imageUrl"
-                  value={form.imageUrl}
-                  onChange={handleFormChange}
-                  placeholder="https://example.com/banner.jpg"
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400 transition"
-                />
-                <p className="text-xs text-gray-400 mt-1">Shown as a banner image in the notification.</p>
-              </div>
+            {/* Title */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notification title <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="title"
+                value={form.title}
+                onChange={handleFormChange}
+                placeholder="e.g. Special offer just for you!"
+                className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-100 transition
+                  ${errors.title ? 'border-red-400' : 'border-gray-300 focus:border-red-400'}`}
+              />
+              {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
             </div>
 
             {/* Body */}
@@ -442,6 +499,93 @@ export default function NotificationCampaigns() {
               <div className="flex justify-between mt-1">
                 {errors.body ? <p className="text-red-500 text-xs">{errors.body}</p> : <span />}
                 <span className="text-xs text-gray-400">{form.body.length} chars</span>
+              </div>
+            </div>
+
+            {/* ── Image Upload ──────────────────────────────────────────── */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-gray-700">
+                  Notification image <span className="text-xs font-normal text-gray-400 ml-1">(optional)</span>
+                </label>
+                <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                  1024 × 512 px recommended · max {IMAGE_MAX_MB}MB
+                </span>
+              </div>
+
+              {/* Drop zone */}
+              {!imagePreview ? (
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`flex flex-col items-center justify-center h-28 border-2 border-dashed rounded-xl cursor-pointer transition-all
+                    ${dragOver
+                      ? 'border-red-400 bg-red-50'
+                      : errors.imageUrl
+                      ? 'border-red-300 bg-red-50'
+                      : 'border-gray-200 bg-gray-50 hover:border-red-300 hover:bg-red-50/30'}`}
+                >
+                  {imageUploading ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-5 h-5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-xs text-gray-500">Uploading...</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 pointer-events-none">
+                      <div className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center mb-1">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <p className="text-sm text-gray-600">Drop image or <span className="text-red-500 font-medium">browse</span></p>
+                      <p className="text-xs text-gray-400">PNG, JPG, WEBP</p>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleFileInput}
+                    disabled={imageUploading}
+                  />
+                </div>
+              ) : (
+                /* Preview */
+                <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-100" style={{ aspectRatio: '2/1' }}>
+                  <img src={imagePreview} alt="Notification banner preview" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={removeImage}
+                    className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs transition"
+                  >
+                    ✕
+                  </button>
+                  <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
+                    ✓ Uploaded
+                  </div>
+                </div>
+              )}
+
+              {errors.imageUrl && <p className="text-red-500 text-xs mt-1">{errors.imageUrl}</p>}
+
+              {/* URL fallback */}
+              <div className="mt-2">
+                <label className="text-xs text-gray-400">Or paste image URL</label>
+                <input
+                  type="url"
+                  name="imageUrl"
+                  value={form.imageUrl}
+                  onChange={e => {
+                    handleFormChange(e);
+                    setImagePreview(e.target.value);
+                  }}
+                  placeholder="https://example.com/banner.jpg"
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400 transition"
+                />
               </div>
             </div>
 
@@ -526,7 +670,6 @@ export default function NotificationCampaigns() {
                   </div>
                 </div>
 
-                {/* Slider track */}
                 <div className="relative">
                   <input
                     type="range"
@@ -548,7 +691,6 @@ export default function NotificationCampaigns() {
                   </div>
                 </div>
 
-                {/* Quick preset buttons */}
                 <div className="flex gap-2 mt-3">
                   {[10, 25, 50, 75, 100].map(p => (
                     <button
@@ -611,19 +753,6 @@ export default function NotificationCampaigns() {
               </div>
             )}
 
-            {/* Image preview */}
-            {form.imageUrl && (
-              <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
-                <p className="text-xs text-gray-500 mb-2 font-medium">Image preview</p>
-                <img
-                  src={form.imageUrl}
-                  alt="Notification banner preview"
-                  className="h-24 object-cover rounded-md border border-gray-200"
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
-              </div>
-            )}
-
             {/* Submit row */}
             <div className="flex items-center justify-between pt-2 border-t border-gray-100">
               <p className="text-xs text-gray-400">The cron job checks every minute for pending campaigns.</p>
@@ -639,7 +768,7 @@ export default function NotificationCampaigns() {
                 <button
                   type="button"
                   onClick={() => handleCreate('now')}
-                  disabled={submitting}
+                  disabled={submitting || imageUploading}
                   className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   {submitting
@@ -651,7 +780,7 @@ export default function NotificationCampaigns() {
                 <button
                   type="button"
                   onClick={() => handleCreate('schedule')}
-                  disabled={submitting}
+                  disabled={submitting || imageUploading}
                   className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
                 >
                   {submitting
