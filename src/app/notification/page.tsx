@@ -1,0 +1,756 @@
+'use client';
+
+import React, { useState, useEffect, useRef } from 'react';
+import moment from 'moment';
+import Swal from 'sweetalert2';
+import { Tooltip } from '@mui/material';
+
+// ─────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────
+interface Campaign {
+  _id: string;
+  title: string;
+  body: string;
+  imageUrl: string;
+  targetType: 'all' | 'selected';
+  targetPhones: string[];
+  scheduledAt: string;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  sentCount: number;
+  failedCount: number;
+  createdAt: string;
+}
+
+interface FormState {
+  title: string;
+  body: string;
+  imageUrl: string;
+  scheduledAt: string;
+  targetType: 'all' | 'selected';
+}
+
+interface FormErrors {
+  title: string;
+  body: string;
+  scheduledAt: string;
+  phones: string;
+}
+
+const INITIAL_FORM: FormState = {
+  title: '',
+  body: '',
+  imageUrl: '',
+  scheduledAt: '',
+  targetType: 'all',
+};
+
+const INITIAL_ERRORS: FormErrors = {
+  title: '',
+  body: '',
+  scheduledAt: '',
+  phones: '',
+};
+
+// ─────────────────────────────────────────────
+// Status Badge
+// ─────────────────────────────────────────────
+const StatusBadge = ({ status }: { status: Campaign['status'] }) => {
+  const map: Record<Campaign['status'], { label: string; classes: string }> = {
+    pending:  { label: 'Pending',  classes: 'bg-yellow-100 text-yellow-700 border border-yellow-200' },
+    running:  { label: 'Running',  classes: 'bg-blue-100 text-blue-700 border border-blue-200' },
+    done:     { label: 'Done',     classes: 'bg-green-100 text-green-700 border border-green-200' },
+    failed:   { label: 'Failed',   classes: 'bg-red-100 text-red-700 border border-red-200' },
+  };
+  const { label, classes } = map[status] ?? map.pending;
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${classes}`}>
+      {status === 'running' && (
+        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse" />
+      )}
+      {label}
+    </span>
+  );
+};
+
+// ─────────────────────────────────────────────
+// Target Badge
+// ─────────────────────────────────────────────
+const TargetBadge = ({ type, count }: { type: 'all' | 'selected'; count: number }) =>
+  type === 'all' ? (
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200">
+      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+      All customers
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200">
+      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+      {count} selected
+    </span>
+  );
+
+// ─────────────────────────────────────────────
+// Delete Trash SVG
+// ─────────────────────────────────────────────
+const TrashSvg = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  </svg>
+);
+
+// ─────────────────────────────────────────────
+// Main Component
+// ─────────────────────────────────────────────
+export default function NotificationCampaigns() {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [errors, setErrors] = useState<FormErrors>(INITIAL_ERRORS);
+  const [phones, setPhones] = useState<string[]>([]);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [showForm, setShowForm] = useState(true);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Fetch campaigns ──────────────────────────
+  const fetchCampaigns = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/list`,
+        { credentials: 'include' }
+      );
+      const data = await res.json();
+      if (data.success && Array.isArray(data.campaigns)) {
+        setCampaigns(
+          data.campaigns.sort(
+            (a: Campaign, b: Campaign) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Failed to fetch campaigns:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchCampaigns(); }, []);
+
+  // ── Form helpers ─────────────────────────────
+  const handleFormChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = e.target;
+    setForm(prev => ({ ...prev, [name]: value }));
+    setErrors(prev => ({ ...prev, [name]: '' }));
+  };
+
+  const handleTargetChange = (val: 'all' | 'selected') => {
+    setForm(prev => ({ ...prev, targetType: val }));
+    if (val === 'all') { setPhones([]); setErrors(prev => ({ ...prev, phones: '' })); }
+  };
+
+  // ── Phone chip management ────────────────────
+  const addPhone = () => {
+    const num = phoneInput.trim();
+    if (!num) return;
+    if (!/^\d{7,15}$/.test(num)) {
+      setErrors(prev => ({ ...prev, phones: 'Enter a valid phone number (7–15 digits).' }));
+      return;
+    }
+    if (phones.includes(num)) {
+      setErrors(prev => ({ ...prev, phones: 'This number is already added.' }));
+      return;
+    }
+    setPhones(prev => [...prev, num]);
+    setPhoneInput('');
+    setErrors(prev => ({ ...prev, phones: '' }));
+    phoneInputRef.current?.focus();
+  };
+
+  const removePhone = (num: string) => setPhones(prev => prev.filter(p => p !== num));
+
+  const handlePhoneKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); addPhone(); }
+  };
+
+  // ── Validation ───────────────────────────────
+  const validate = (): boolean => {
+    const newErrors = { ...INITIAL_ERRORS };
+    let valid = true;
+
+    if (!form.title.trim()) { newErrors.title = 'Title is required.'; valid = false; }
+    if (!form.body.trim()) { newErrors.body = 'Message body is required.'; valid = false; }
+    if (!form.scheduledAt) { newErrors.scheduledAt = 'Please pick a schedule date & time.'; valid = false; }
+    else if (new Date(form.scheduledAt) <= new Date()) {
+      newErrors.scheduledAt = 'Scheduled time must be in the future.'; valid = false;
+    }
+    if (form.targetType === 'selected' && phones.length === 0) {
+      newErrors.phones = 'Add at least one phone number.'; valid = false;
+    }
+
+    setErrors(newErrors);
+    return valid;
+  };
+
+  // ── Create campaign ──────────────────────────
+  const handleCreate = async (mode: 'now' | 'schedule' = 'schedule') => {
+  // For "Send now", only validate title + body, skip scheduledAt
+  const newErrors = { ...INITIAL_ERRORS };
+  let valid = true;
+
+  if (!form.title.trim()) { newErrors.title = 'Title is required.'; valid = false; }
+  if (!form.body.trim()) { newErrors.body = 'Message body is required.'; valid = false; }
+  if (mode === 'schedule') {
+    if (!form.scheduledAt) { newErrors.scheduledAt = 'Please pick a schedule date & time.'; valid = false; }
+    else if (new Date(form.scheduledAt) <= new Date()) {
+      newErrors.scheduledAt = 'Scheduled time must be in the future.'; valid = false;
+    }
+  }
+  if (form.targetType === 'selected' && phones.length === 0) {
+    newErrors.phones = 'Add at least one phone number.'; valid = false;
+  }
+
+  setErrors(newErrors);
+  if (!valid) return;
+
+  setSubmitting(true);
+
+  try {
+    // Create the campaign first (scheduledAt = now if mode is 'now')
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/create`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: form.title.trim(),
+          body: form.body.trim(),
+          imageUrl: form.imageUrl.trim(),
+          scheduledAt: mode === 'now' ? new Date().toISOString() : form.scheduledAt,
+          targetType: form.targetType,
+          targetPhones: form.targetType === 'selected' ? phones : [],
+        }),
+      }
+    );
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Failed to create campaign.');
+
+    if (mode === 'now') {
+      // Immediately trigger it
+      await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/trigger/${data.campaign._id}`,
+        { method: 'POST', credentials: 'include' }
+      );
+      Swal.fire({ icon: 'success', title: 'Sent!', text: 'Notifications are being dispatched now.', timer: 2000, showConfirmButton: false });
+    } else {
+      Swal.fire({ icon: 'success', title: 'Campaign scheduled!', timer: 2000, showConfirmButton: false });
+    }
+
+    setForm(INITIAL_FORM);
+    setPhones([]);
+    fetchCampaigns();
+  } catch (err: any) {
+    Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+  } finally {
+    setSubmitting(false);
+  }
+};
+
+const handleTrigger = async (campaign: Campaign) => {
+  const result = await Swal.fire({
+    title: 'Send now?',
+    text: `This will immediately dispatch "${campaign.title}" to ${campaign.targetType === 'all' ? 'all customers' : `${campaign.targetPhones.length} customer(s)`}.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#1f2937',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: '⚡ Yes, send now',
+    cancelButtonText: 'Cancel',
+  });
+  if (!result.isConfirmed) return;
+
+  Swal.fire({ title: 'Sending...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/trigger/${campaign._id}`,
+      { method: 'POST', credentials: 'include' }
+    );
+    const data = await res.json();
+    if (data.success) {
+      Swal.fire({ icon: 'success', title: 'Triggered!', text: 'Notifications are being sent in the background.', timer: 2000, showConfirmButton: false });
+      // Poll for status update after a few seconds
+      setTimeout(fetchCampaigns, 3000);
+    } else throw new Error(data.message);
+  } catch (err: any) {
+    Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+  }
+};
+  // ── Delete campaign ──────────────────────────
+  const handleDelete = async (campaign: Campaign) => {
+    const result = await Swal.fire({
+      title: 'Delete campaign?',
+      text: `"${campaign.title}" will be permanently removed and won't be sent.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it',
+      cancelButtonText: 'Cancel',
+    });
+    if (!result.isConfirmed) return;
+
+    Swal.fire({ title: 'Deleting...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/campaign/${campaign._id}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      const data = await res.json();
+      if (data.success) {
+        setCampaigns(prev => prev.filter(c => c._id !== campaign._id));
+        Swal.fire({ icon: 'success', title: 'Deleted!', timer: 1500, showConfirmButton: false });
+      } else throw new Error(data.message || 'Delete failed.');
+    } catch (err: any) {
+      Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+    }
+  };
+
+  // ── Min datetime for the scheduler (now + 1 min) ──
+  const minDatetime = moment().add(1, 'minute').format('YYYY-MM-DDTHH:mm');
+
+  // ─────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────
+  return (
+    <div className="p-6 min-h-screen bg-gray-50">
+
+      {/* ── Page Header ── */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Notification Campaigns</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Schedule push notifications to customers</p>
+        </div>
+        <button
+          onClick={() => setShowForm(v => !v)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+        >
+          {showForm ? (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              </svg>
+              Hide form
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New campaign
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* ── Create Form ── */}
+      {showForm && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-800">Create campaign</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Fill in the details and pick a time. The cron job will fire it automatically.</p>
+          </div>
+
+          <div className="p-6 space-y-5">
+
+            {/* Row 1: Title + Image URL */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notification title <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="title"
+                  value={form.title}
+                  onChange={handleFormChange}
+                  placeholder="e.g. Special offer just for you!"
+                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-100 transition
+                    ${errors.title ? 'border-red-400 focus:border-red-400' : 'border-gray-300 focus:border-red-400'}`}
+                />
+                {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Image URL
+                  <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="url"
+                  name="imageUrl"
+                  value={form.imageUrl}
+                  onChange={handleFormChange}
+                  placeholder="https://example.com/banner.jpg"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400 transition"
+                />
+                <p className="text-xs text-gray-400 mt-1">Shown as a banner image in the notification.</p>
+              </div>
+            </div>
+
+            {/* Row 2: Body */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Message body <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                name="body"
+                value={form.body}
+                onChange={handleFormChange}
+                placeholder="Write your notification message here..."
+                rows={3}
+                className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-100 transition resize-none
+                  ${errors.body ? 'border-red-400 focus:border-red-400' : 'border-gray-300 focus:border-red-400'}`}
+              />
+              <div className="flex justify-between mt-1">
+                {errors.body
+                  ? <p className="text-red-500 text-xs">{errors.body}</p>
+                  : <span />
+                }
+                <span className="text-xs text-gray-400">{form.body.length} chars</span>
+              </div>
+            </div>
+
+            {/* Row 3: Target + Schedule */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              {/* Target type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Send to</label>
+                <div className="flex gap-3">
+                  {(['all', 'selected'] as const).map(val => (
+                    <label
+                      key={val}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg border cursor-pointer text-sm font-medium transition
+                        ${form.targetType === val
+                          ? 'border-red-500 bg-red-50 text-red-700'
+                          : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                    >
+                      <input
+                        type="radio"
+                        name="targetType"
+                        value={val}
+                        checked={form.targetType === val}
+                        onChange={() => handleTargetChange(val)}
+                        className="hidden"
+                      />
+                      {val === 'all' ? (
+                        <>
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          All customers
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Select by phone
+                        </>
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Schedule datetime */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Schedule date & time <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  name="scheduledAt"
+                  value={form.scheduledAt}
+                  min={minDatetime}
+                  onChange={handleFormChange}
+                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-100 transition
+                    ${errors.scheduledAt ? 'border-red-400 focus:border-red-400' : 'border-gray-300 focus:border-red-400'}`}
+                />
+                {errors.scheduledAt && <p className="text-red-500 text-xs mt-1">{errors.scheduledAt}</p>}
+              </div>
+            </div>
+
+            {/* Phone number selector */}
+            {form.targetType === 'selected' && (
+              <div className="rounded-lg border border-dashed border-indigo-200 bg-indigo-50 p-4">
+                <label className="block text-sm font-medium text-indigo-800 mb-2">
+                  Customer phone numbers
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    ref={phoneInputRef}
+                    type="tel"
+                    value={phoneInput}
+                    onChange={e => { setPhoneInput(e.target.value); setErrors(prev => ({ ...prev, phones: '' })); }}
+                    onKeyDown={handlePhoneKeyDown}
+                    placeholder="e.g. 9876543210"
+                    className="flex-1 px-3 py-2 rounded-lg border border-indigo-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={addPhone}
+                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
+                {errors.phones && <p className="text-red-500 text-xs mt-1">{errors.phones}</p>}
+                {!errors.phones && (
+                  <p className="text-indigo-500 text-xs mt-1">Press Enter or click Add after each number.</p>
+                )}
+
+                {phones.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {phones.map(num => (
+                      <span
+                        key={num}
+                        className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-xs font-medium"
+                      >
+                        {num}
+                        <button
+                          type="button"
+                          onClick={() => removePhone(num)}
+                          aria-label={`Remove ${num}`}
+                          className="w-4 h-4 flex items-center justify-center rounded-full bg-indigo-200 hover:bg-indigo-300 text-indigo-700 transition-colors"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {phones.length === 0 && (
+                  <div className="mt-3 text-center py-3 text-indigo-400 text-xs">
+                    No numbers added yet
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Image preview */}
+            {form.imageUrl && (
+              <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                <p className="text-xs text-gray-500 mb-2 font-medium">Image preview</p>
+                <img
+                  src={form.imageUrl}
+                  alt="Notification banner preview"
+                  className="h-24 object-cover rounded-md border border-gray-200"
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+            <p className="text-xs text-gray-400">
+                The cron job checks every minute for pending campaigns.
+            </p>
+            <div className="flex gap-2">
+                <button
+                type="button"
+                onClick={() => handleCreate('now')}
+                disabled={submitting}
+                className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                ⚡ Send now
+                </button>
+                <button
+                type="button"
+                onClick={() => handleCreate('schedule')}
+                disabled={submitting}
+                className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                >
+                📅 Schedule campaign
+                </button>
+            </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Campaigns Table ── */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-gray-800">All campaigns</h2>
+          <div className="flex items-center gap-2">
+            {!loading && (
+              <span className="text-xs text-gray-400">{campaigns.length} total</span>
+            )}
+            <button
+              onClick={fetchCampaigns}
+              className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 transition-colors"
+              title="Refresh"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+            <svg className="w-8 h-8 animate-spin mb-3 text-red-400" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <p className="text-sm">Loading campaigns...</p>
+          </div>
+        ) : campaigns.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+            <svg className="w-12 h-12 mb-3 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            <p className="text-sm font-medium text-gray-500">No campaigns yet</p>
+            <p className="text-xs mt-1">Create your first campaign using the form above.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  {['#', 'Title / Body', 'Image', 'Target', 'Scheduled at', 'Status', 'Sent / Failed', 'Action'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {campaigns.map((campaign, idx) => (
+                  <tr key={campaign._id} className="hover:bg-gray-50 transition-colors">
+
+                    {/* S.No */}
+                    <td className="px-4 py-3 text-gray-400 text-xs w-10">{idx + 1}</td>
+
+                    {/* Title + Body */}
+                    <td className="px-4 py-3 max-w-[220px]">
+                      <Tooltip title={campaign.title}>
+                        <p className="font-medium text-gray-900 truncate">{campaign.title}</p>
+                      </Tooltip>
+                      <Tooltip title={campaign.body}>
+                        <p className="text-gray-400 text-xs mt-0.5 truncate">{campaign.body}</p>
+                      </Tooltip>
+                    </td>
+
+                    {/* Image */}
+                    <td className="px-4 py-3 w-16">
+                      {campaign.imageUrl ? (
+                        <img
+                          src={campaign.imageUrl}
+                          alt="banner"
+                          className="w-10 h-10 object-cover rounded-md border border-gray-100"
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
+                    </td>
+
+                    {/* Target */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <TargetBadge type={campaign.targetType} count={campaign.targetPhones.length} />
+                      {campaign.targetType === 'selected' && campaign.targetPhones.length > 0 && (
+                        <Tooltip title={campaign.targetPhones.join(', ')}>
+                          <p className="text-xs text-gray-400 mt-1 truncate max-w-[120px] cursor-pointer">
+                            {campaign.targetPhones.slice(0, 2).join(', ')}
+                            {campaign.targetPhones.length > 2 && ` +${campaign.targetPhones.length - 2} more`}
+                          </p>
+                        </Tooltip>
+                      )}
+                    </td>
+
+                    {/* Scheduled at */}
+                    <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                      <p>{moment(campaign.scheduledAt).format('DD MMM YYYY')}</p>
+                      <p className="text-xs text-gray-400">{moment(campaign.scheduledAt).format('hh:mm A')}</p>
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-4 py-3">
+                      <StatusBadge status={campaign.status} />
+                    </td>
+
+                    {/* Sent / Failed */}
+                    <td className="px-4 py-3">
+                      {campaign.status === 'pending' ? (
+                        <span className="text-gray-300 text-xs">—</span>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="flex items-center gap-1 text-green-600 font-medium">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            {campaign.sentCount}
+                          </span>
+                          <span className="text-gray-300">/</span>
+                          <span className="flex items-center gap-1 text-red-500 font-medium">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            {campaign.failedCount}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Action */}
+                    <td className="px-4 py-3">
+                      {/* Replace the Action td content */}
+                        {campaign.status === 'pending' ? (
+                        <div className="flex items-center gap-1">
+                            <Tooltip title="Send now">
+                            <button
+                                onClick={() => handleTrigger(campaign)}
+                                className="p-1.5 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                </svg>
+                            </button>
+                            </Tooltip>
+                            <Tooltip title="Delete campaign">
+                            <button
+                                onClick={() => handleDelete(campaign)}
+                                className="p-1.5 rounded-md text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                                <TrashSvg />
+                            </button>
+                            </Tooltip>
+                        </div>
+                        ) : (
+                        <span className="text-gray-300 text-xs px-2">—</span>
+                        )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
