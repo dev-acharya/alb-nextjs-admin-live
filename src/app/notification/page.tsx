@@ -5,9 +5,6 @@ import moment from 'moment';
 import Swal from 'sweetalert2';
 import { Tooltip } from '@mui/material';
 
-// ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
 interface Campaign {
   _id: string;
   title: string;
@@ -28,6 +25,7 @@ interface FormState {
   imageUrl: string;
   scheduledAt: string;
   targetType: 'all' | 'selected';
+  percentage: number;
 }
 
 interface FormErrors {
@@ -37,12 +35,15 @@ interface FormErrors {
   phones: string;
 }
 
+const DRAFT_KEY = 'notif_campaign_draft';
+
 const INITIAL_FORM: FormState = {
   title: '',
   body: '',
   imageUrl: '',
   scheduledAt: '',
   targetType: 'all',
+  percentage: 100,
 };
 
 const INITIAL_ERRORS: FormErrors = {
@@ -52,46 +53,51 @@ const INITIAL_ERRORS: FormErrors = {
   phones: '',
 };
 
-// ─────────────────────────────────────────────
-// Status Badge
-// ─────────────────────────────────────────────
+function loadDraft(): { form: FormState; phones: string[] } | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(form: FormState, phones: string[]) {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ form, phones })); } catch {}
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch {}
+}
+
 const StatusBadge = ({ status }: { status: Campaign['status'] }) => {
   const map: Record<Campaign['status'], { label: string; classes: string }> = {
-    pending:  { label: 'Pending',  classes: 'bg-yellow-100 text-yellow-700 border border-yellow-200' },
-    running:  { label: 'Running',  classes: 'bg-blue-100 text-blue-700 border border-blue-200' },
-    done:     { label: 'Done',     classes: 'bg-green-100 text-green-700 border border-green-200' },
-    failed:   { label: 'Failed',   classes: 'bg-red-100 text-red-700 border border-red-200' },
+    pending: { label: 'Pending', classes: 'bg-yellow-100 text-yellow-700 border border-yellow-200' },
+    running: { label: 'Running', classes: 'bg-blue-100 text-blue-700 border border-blue-200' },
+    done:    { label: 'Done',    classes: 'bg-green-100 text-green-700 border border-green-200' },
+    failed:  { label: 'Failed',  classes: 'bg-red-100 text-red-700 border border-red-200' },
   };
   const { label, classes } = map[status] ?? map.pending;
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${classes}`}>
-      {status === 'running' && (
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse" />
-      )}
+      {status === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5 animate-pulse" />}
       {label}
     </span>
   );
 };
 
-// ─────────────────────────────────────────────
-// Target Badge
-// ─────────────────────────────────────────────
 const TargetBadge = ({ type, count }: { type: 'all' | 'selected'; count: number }) =>
   type === 'all' ? (
     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200">
-      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
       All customers
     </span>
   ) : (
     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200">
-      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
       {count} selected
     </span>
   );
 
-// ─────────────────────────────────────────────
-// Delete Trash SVG
-// ─────────────────────────────────────────────
 const TrashSvg = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
@@ -99,9 +105,6 @@ const TrashSvg = () => (
   </svg>
 );
 
-// ─────────────────────────────────────────────
-// Main Component
-// ─────────────────────────────────────────────
 export default function NotificationCampaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,24 +114,43 @@ export default function NotificationCampaigns() {
   const [phones, setPhones] = useState<string[]>([]);
   const [phoneInput, setPhoneInput] = useState('');
   const [showForm, setShowForm] = useState(true);
+  const [eligibleCount, setEligibleCount] = useState<number | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
   const phoneInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Fetch campaigns ──────────────────────────
+  const targetedCount =
+    eligibleCount !== null ? Math.round((form.percentage / 100) * eligibleCount) : null;
+
+  useEffect(() => {
+    const draft = loadDraft();
+    if (draft) {
+      setForm(draft.form);
+      setPhones(draft.phones);
+      setDraftRestored(true);
+      setTimeout(() => setDraftRestored(false), 4000);
+    }
+  }, []);
+
+  useEffect(() => {
+    saveDraft(form, phones);
+  }, [form, phones]);
+
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/mobile/eligible-count`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d.success) setEligibleCount(d.count); })
+      .catch(() => {});
+  }, []);
+
   const fetchCampaigns = async () => {
     try {
       setLoading(true);
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/list`,
-        { credentials: 'include' }
-      );
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/mobile/list`, { credentials: 'include' });
       const data = await res.json();
       if (data.success && Array.isArray(data.campaigns)) {
-        setCampaigns(
-          data.campaigns.sort(
-            (a: Campaign, b: Campaign) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          )
-        );
+        setCampaigns(data.campaigns.sort(
+          (a: Campaign, b: Campaign) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ));
       }
     } catch (err) {
       console.error('Failed to fetch campaigns:', err);
@@ -139,10 +161,7 @@ export default function NotificationCampaigns() {
 
   useEffect(() => { fetchCampaigns(); }, []);
 
-  // ── Form helpers ─────────────────────────────
-  const handleFormChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
     setErrors(prev => ({ ...prev, [name]: '' }));
@@ -153,12 +172,15 @@ export default function NotificationCampaigns() {
     if (val === 'all') { setPhones([]); setErrors(prev => ({ ...prev, phones: '' })); }
   };
 
-  // ── Phone chip management ────────────────────
+  const handleSlider = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm(prev => ({ ...prev, percentage: Number(e.target.value) }));
+  };
+
   const addPhone = () => {
     const num = phoneInput.trim();
     if (!num) return;
     if (!/^\d{7,15}$/.test(num)) {
-      setErrors(prev => ({ ...prev, phones: 'Enter a valid phone number (7–15 digits).' }));
+      setErrors(prev => ({ ...prev, phones: 'Enter a valid phone number (7-15 digits).' }));
       return;
     }
     if (phones.includes(num)) {
@@ -177,53 +199,35 @@ export default function NotificationCampaigns() {
     if (e.key === 'Enter') { e.preventDefault(); addPhone(); }
   };
 
-  // ── Validation ───────────────────────────────
-  const validate = (): boolean => {
+  const resetForm = () => {
+    setForm(INITIAL_FORM);
+    setPhones([]);
+    setErrors(INITIAL_ERRORS);
+    clearDraft();
+  };
+
+  const handleCreate = async (mode: 'now' | 'schedule' = 'schedule') => {
     const newErrors = { ...INITIAL_ERRORS };
     let valid = true;
 
     if (!form.title.trim()) { newErrors.title = 'Title is required.'; valid = false; }
     if (!form.body.trim()) { newErrors.body = 'Message body is required.'; valid = false; }
-    if (!form.scheduledAt) { newErrors.scheduledAt = 'Please pick a schedule date & time.'; valid = false; }
-    else if (new Date(form.scheduledAt) <= new Date()) {
-      newErrors.scheduledAt = 'Scheduled time must be in the future.'; valid = false;
+    if (mode === 'schedule') {
+      if (!form.scheduledAt) { newErrors.scheduledAt = 'Please pick a schedule date & time.'; valid = false; }
+      else if (new Date(form.scheduledAt) <= new Date()) {
+        newErrors.scheduledAt = 'Scheduled time must be in the future.'; valid = false;
+      }
     }
     if (form.targetType === 'selected' && phones.length === 0) {
       newErrors.phones = 'Add at least one phone number.'; valid = false;
     }
 
     setErrors(newErrors);
-    return valid;
-  };
+    if (!valid) return;
+    setSubmitting(true);
 
-  // ── Create campaign ──────────────────────────
-  const handleCreate = async (mode: 'now' | 'schedule' = 'schedule') => {
-  // For "Send now", only validate title + body, skip scheduledAt
-  const newErrors = { ...INITIAL_ERRORS };
-  let valid = true;
-
-  if (!form.title.trim()) { newErrors.title = 'Title is required.'; valid = false; }
-  if (!form.body.trim()) { newErrors.body = 'Message body is required.'; valid = false; }
-  if (mode === 'schedule') {
-    if (!form.scheduledAt) { newErrors.scheduledAt = 'Please pick a schedule date & time.'; valid = false; }
-    else if (new Date(form.scheduledAt) <= new Date()) {
-      newErrors.scheduledAt = 'Scheduled time must be in the future.'; valid = false;
-    }
-  }
-  if (form.targetType === 'selected' && phones.length === 0) {
-    newErrors.phones = 'Add at least one phone number.'; valid = false;
-  }
-
-  setErrors(newErrors);
-  if (!valid) return;
-
-  setSubmitting(true);
-
-  try {
-    // Create the campaign first (scheduledAt = now if mode is 'now')
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/create`,
-      {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/mobile/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -234,68 +238,63 @@ export default function NotificationCampaigns() {
           scheduledAt: mode === 'now' ? new Date().toISOString() : form.scheduledAt,
           targetType: form.targetType,
           targetPhones: form.targetType === 'selected' ? phones : [],
+          percentage: form.targetType === 'all' ? form.percentage : 100,
         }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Failed to create campaign.');
+
+      if (mode === 'now') {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/mobile/trigger/${data.campaign._id}`, {
+          method: 'POST', credentials: 'include',
+        });
+        Swal.fire({ icon: 'success', title: 'Sent!', text: 'Notifications are being dispatched now.', timer: 2000, showConfirmButton: false });
+      } else {
+        Swal.fire({ icon: 'success', title: 'Campaign scheduled!', timer: 2000, showConfirmButton: false });
       }
-    );
-    const data = await res.json();
-    if (!data.success) throw new Error(data.message || 'Failed to create campaign.');
 
-    if (mode === 'now') {
-      // Immediately trigger it
-      await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/trigger/${data.campaign._id}`,
-        { method: 'POST', credentials: 'include' }
-      );
-      Swal.fire({ icon: 'success', title: 'Sent!', text: 'Notifications are being dispatched now.', timer: 2000, showConfirmButton: false });
-    } else {
-      Swal.fire({ icon: 'success', title: 'Campaign scheduled!', timer: 2000, showConfirmButton: false });
+      resetForm();
+      fetchCampaigns();
+    } catch (err: any) {
+      Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+    } finally {
+      setSubmitting(false);
     }
+  };
 
-    setForm(INITIAL_FORM);
-    setPhones([]);
-    fetchCampaigns();
-  } catch (err: any) {
-    Swal.fire({ icon: 'error', title: 'Error', text: err.message });
-  } finally {
-    setSubmitting(false);
-  }
-};
+  const handleTrigger = async (campaign: Campaign) => {
+    const result = await Swal.fire({
+      title: 'Send now?',
+      text: `This will immediately dispatch "${campaign.title}" to ${campaign.targetType === 'all' ? 'all customers' : `${campaign.targetPhones.length} customer(s)`}.`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#1f2937',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, send now',
+      cancelButtonText: 'Cancel',
+    });
+    if (!result.isConfirmed) return;
 
-const handleTrigger = async (campaign: Campaign) => {
-  const result = await Swal.fire({
-    title: 'Send now?',
-    text: `This will immediately dispatch "${campaign.title}" to ${campaign.targetType === 'all' ? 'all customers' : `${campaign.targetPhones.length} customer(s)`}.`,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonColor: '#1f2937',
-    cancelButtonColor: '#6b7280',
-    confirmButtonText: '⚡ Yes, send now',
-    cancelButtonText: 'Cancel',
-  });
-  if (!result.isConfirmed) return;
+    Swal.fire({ title: 'Sending...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-  Swal.fire({ title: 'Sending...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/mobile/trigger/${campaign._id}`, {
+        method: 'POST', credentials: 'include',
+      });
+      const data = await res.json();
+      if (data.success) {
+        Swal.fire({ icon: 'success', title: 'Triggered!', text: 'Notifications are being sent in the background.', timer: 2000, showConfirmButton: false });
+        setTimeout(fetchCampaigns, 3000);
+      } else throw new Error(data.message);
+    } catch (err: any) {
+      Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+    }
+  };
 
-  try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/trigger/${campaign._id}`,
-      { method: 'POST', credentials: 'include' }
-    );
-    const data = await res.json();
-    if (data.success) {
-      Swal.fire({ icon: 'success', title: 'Triggered!', text: 'Notifications are being sent in the background.', timer: 2000, showConfirmButton: false });
-      // Poll for status update after a few seconds
-      setTimeout(fetchCampaigns, 3000);
-    } else throw new Error(data.message);
-  } catch (err: any) {
-    Swal.fire({ icon: 'error', title: 'Error', text: err.message });
-  }
-};
-  // ── Delete campaign ──────────────────────────
   const handleDelete = async (campaign: Campaign) => {
     const result = await Swal.fire({
       title: 'Delete campaign?',
-      text: `"${campaign.title}" will be permanently removed and won't be sent.`,
+      text: `"${campaign.title}" will be permanently removed.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
@@ -308,10 +307,9 @@ const handleTrigger = async (campaign: Campaign) => {
     Swal.fire({ title: 'Deleting...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/campaign/${campaign._id}`,
-        { method: 'DELETE', credentials: 'include' }
-      );
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/mobile/campaign/${campaign._id}`, {
+        method: 'DELETE', credentials: 'include',
+      });
       const data = await res.json();
       if (data.success) {
         setCampaigns(prev => prev.filter(c => c._id !== campaign._id));
@@ -322,21 +320,33 @@ const handleTrigger = async (campaign: Campaign) => {
     }
   };
 
-  // ── Min datetime for the scheduler (now + 1 min) ──
   const minDatetime = moment().add(1, 'minute').format('YYYY-MM-DDTHH:mm');
 
-  // ─────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────
   return (
     <div className="p-6 min-h-screen bg-gray-50">
 
-      {/* ── Page Header ── */}
+      {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Notification Campaigns</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Schedule push notifications to customers</p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center shadow-sm flex-shrink-0">
+            <img src="/logo2.png" alt="image" className=' w-10 h-10 rounded-xl' />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900 leading-tight">Notification Campaigns</h1>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-xs text-gray-400">Schedule push notifications to customers</p>
+              {eligibleCount !== null && (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <span className="text-xs font-medium text-green-600">
+                    {eligibleCount.toLocaleString()} eligible devices
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
         </div>
+
         <button
           onClick={() => setShowForm(v => !v)}
           className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
@@ -359,7 +369,20 @@ const handleTrigger = async (campaign: Campaign) => {
         </button>
       </div>
 
-      {/* ── Create Form ── */}
+      {/* Draft restored banner */}
+      {draftRestored && (
+        <div className="mb-4 flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Draft restored from your last session.</span>
+          <button onClick={resetForm} className="ml-auto text-xs underline hover:no-underline">
+            Clear draft
+          </button>
+        </div>
+      )}
+
+      {/* Create Form */}
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
           <div className="px-6 py-4 border-b border-gray-100">
@@ -369,7 +392,7 @@ const handleTrigger = async (campaign: Campaign) => {
 
           <div className="p-6 space-y-5">
 
-            {/* Row 1: Title + Image URL */}
+            {/* Title + Image */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -382,15 +405,13 @@ const handleTrigger = async (campaign: Campaign) => {
                   onChange={handleFormChange}
                   placeholder="e.g. Special offer just for you!"
                   className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-100 transition
-                    ${errors.title ? 'border-red-400 focus:border-red-400' : 'border-gray-300 focus:border-red-400'}`}
+                    ${errors.title ? 'border-red-400' : 'border-gray-300 focus:border-red-400'}`}
                 />
                 {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Image URL
-                  <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
+                  Image URL <span className="text-xs font-normal text-gray-400 ml-1">(optional)</span>
                 </label>
                 <input
                   type="url"
@@ -404,7 +425,7 @@ const handleTrigger = async (campaign: Campaign) => {
               </div>
             </div>
 
-            {/* Row 2: Body */}
+            {/* Body */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Message body <span className="text-red-500">*</span>
@@ -416,21 +437,16 @@ const handleTrigger = async (campaign: Campaign) => {
                 placeholder="Write your notification message here..."
                 rows={3}
                 className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-100 transition resize-none
-                  ${errors.body ? 'border-red-400 focus:border-red-400' : 'border-gray-300 focus:border-red-400'}`}
+                  ${errors.body ? 'border-red-400' : 'border-gray-300 focus:border-red-400'}`}
               />
               <div className="flex justify-between mt-1">
-                {errors.body
-                  ? <p className="text-red-500 text-xs">{errors.body}</p>
-                  : <span />
-                }
+                {errors.body ? <p className="text-red-500 text-xs">{errors.body}</p> : <span />}
                 <span className="text-xs text-gray-400">{form.body.length} chars</span>
               </div>
             </div>
 
-            {/* Row 3: Target + Schedule */}
+            {/* Target + Schedule */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-              {/* Target type */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Send to</label>
                 <div className="flex gap-3">
@@ -471,8 +487,6 @@ const handleTrigger = async (campaign: Campaign) => {
                   ))}
                 </div>
               </div>
-
-              {/* Schedule datetime */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Schedule date & time <span className="text-red-500">*</span>
@@ -484,18 +498,79 @@ const handleTrigger = async (campaign: Campaign) => {
                   min={minDatetime}
                   onChange={handleFormChange}
                   className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-100 transition
-                    ${errors.scheduledAt ? 'border-red-400 focus:border-red-400' : 'border-gray-300 focus:border-red-400'}`}
+                    ${errors.scheduledAt ? 'border-red-400' : 'border-gray-300 focus:border-red-400'}`}
                 />
                 {errors.scheduledAt && <p className="text-red-500 text-xs mt-1">{errors.scheduledAt}</p>}
               </div>
             </div>
 
-            {/* Phone number selector */}
+            {/* Percentage Slider — only when targetType is 'all' */}
+            {form.targetType === 'all' && (
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">Audience size</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Limit what percentage of eligible customers receive this</p>
+                  </div>
+                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold flex-shrink-0
+                    ${form.percentage === 100
+                      ? 'bg-green-100 text-green-700'
+                      : form.percentage >= 50
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-amber-100 text-amber-700'}`}>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {targetedCount !== null ? `${targetedCount.toLocaleString()} customers` : 'Loading...'}
+                  </div>
+                </div>
+
+                {/* Slider track */}
+                <div className="relative">
+                  <input
+                    type="range"
+                    min={1}
+                    max={100}
+                    step={1}
+                    value={form.percentage}
+                    onChange={handleSlider}
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, #dc2626 0%, #dc2626 ${form.percentage}%, #e5e7eb ${form.percentage}%, #e5e7eb 100%)`,
+                      accentColor: '#dc2626',
+                    }}
+                  />
+                  <div className="flex justify-between mt-1.5">
+                    <span className="text-xs text-gray-400">1%</span>
+                    <span className="text-xs font-semibold text-red-600">{form.percentage}%</span>
+                    <span className="text-xs text-gray-400">100%</span>
+                  </div>
+                </div>
+
+                {/* Quick preset buttons */}
+                <div className="flex gap-2 mt-3">
+                  {[10, 25, 50, 75, 100].map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, percentage: p }))}
+                      className={`flex-1 py-1 rounded-md text-xs font-medium border transition
+                        ${form.percentage === p
+                          ? 'bg-red-600 border-red-600 text-white'
+                          : 'bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600'}`}
+                    >
+                      {p}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Phone selector */}
             {form.targetType === 'selected' && (
               <div className="rounded-lg border border-dashed border-indigo-200 bg-indigo-50 p-4">
-                <label className="block text-sm font-medium text-indigo-800 mb-2">
-                  Customer phone numbers
-                </label>
+                <label className="block text-sm font-medium text-indigo-800 mb-2">Customer phone numbers</label>
                 <div className="flex gap-2">
                   <input
                     ref={phoneInputRef}
@@ -514,36 +589,24 @@ const handleTrigger = async (campaign: Campaign) => {
                     Add
                   </button>
                 </div>
-                {errors.phones && <p className="text-red-500 text-xs mt-1">{errors.phones}</p>}
-                {!errors.phones && (
-                  <p className="text-indigo-500 text-xs mt-1">Press Enter or click Add after each number.</p>
-                )}
-
-                {phones.length > 0 && (
+                {errors.phones
+                  ? <p className="text-red-500 text-xs mt-1">{errors.phones}</p>
+                  : <p className="text-indigo-500 text-xs mt-1">Press Enter or click Add after each number.</p>
+                }
+                {phones.length > 0 ? (
                   <div className="flex flex-wrap gap-2 mt-3">
                     {phones.map(num => (
-                      <span
-                        key={num}
-                        className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-xs font-medium"
-                      >
+                      <span key={num} className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-xs font-medium">
                         {num}
-                        <button
-                          type="button"
-                          onClick={() => removePhone(num)}
-                          aria-label={`Remove ${num}`}
-                          className="w-4 h-4 flex items-center justify-center rounded-full bg-indigo-200 hover:bg-indigo-300 text-indigo-700 transition-colors"
-                        >
-                          ×
+                        <button type="button" onClick={() => removePhone(num)} aria-label={`Remove ${num}`}
+                          className="w-4 h-4 flex items-center justify-center rounded-full bg-indigo-200 hover:bg-indigo-300 text-indigo-700 transition-colors">
+                          x
                         </button>
                       </span>
                     ))}
                   </div>
-                )}
-
-                {phones.length === 0 && (
-                  <div className="mt-3 text-center py-3 text-indigo-400 text-xs">
-                    No numbers added yet
-                  </div>
+                ) : (
+                  <div className="mt-3 text-center py-3 text-indigo-400 text-xs">No numbers added yet</div>
                 )}
               </div>
             )}
@@ -561,46 +624,55 @@ const handleTrigger = async (campaign: Campaign) => {
               </div>
             )}
 
+            {/* Submit row */}
             <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-            <p className="text-xs text-gray-400">
-                The cron job checks every minute for pending campaigns.
-            </p>
-            <div className="flex gap-2">
+              <p className="text-xs text-gray-400">The cron job checks every minute for pending campaigns.</p>
+              <div className="flex gap-2">
                 <button
-                type="button"
-                onClick={() => handleCreate('now')}
-                disabled={submitting}
-                className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 text-white text-sm font-medium rounded-lg transition-colors"
+                  type="button"
+                  onClick={resetForm}
+                  disabled={submitting}
+                  className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 text-sm font-medium rounded-lg transition-colors"
                 >
-                ⚡ Send now
+                  Clear
                 </button>
                 <button
-                type="button"
-                onClick={() => handleCreate('schedule')}
-                disabled={submitting}
-                className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                  type="button"
+                  onClick={() => handleCreate('now')}
+                  disabled={submitting}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-900 disabled:bg-gray-300 text-white text-sm font-medium rounded-lg transition-colors"
                 >
-                📅 Schedule campaign
+                  {submitting
+                    ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    : <span>&#x26A1;</span>
+                  }
+                  Send now
                 </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => handleCreate('schedule')}
+                  disabled={submitting}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                >
+                  {submitting
+                    ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    : <span>&#x1F4C5;</span>
+                  }
+                  Schedule campaign
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Campaigns Table ── */}
+      {/* Campaigns Table */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-800">All campaigns</h2>
           <div className="flex items-center gap-2">
-            {!loading && (
-              <span className="text-xs text-gray-400">{campaigns.length} total</span>
-            )}
-            <button
-              onClick={fetchCampaigns}
-              className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 transition-colors"
-              title="Refresh"
-            >
+            {!loading && <span className="text-xs text-gray-400">{campaigns.length} total</span>}
+            <button onClick={fetchCampaigns} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 transition-colors" title="Refresh">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -632,20 +704,14 @@ const handleTrigger = async (campaign: Campaign) => {
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
                   {['#', 'Title / Body', 'Image', 'Target', 'Scheduled at', 'Status', 'Sent / Failed', 'Action'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                      {h}
-                    </th>
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {campaigns.map((campaign, idx) => (
                   <tr key={campaign._id} className="hover:bg-gray-50 transition-colors">
-
-                    {/* S.No */}
                     <td className="px-4 py-3 text-gray-400 text-xs w-10">{idx + 1}</td>
-
-                    {/* Title + Body */}
                     <td className="px-4 py-3 max-w-[220px]">
                       <Tooltip title={campaign.title}>
                         <p className="font-medium text-gray-900 truncate">{campaign.title}</p>
@@ -654,22 +720,15 @@ const handleTrigger = async (campaign: Campaign) => {
                         <p className="text-gray-400 text-xs mt-0.5 truncate">{campaign.body}</p>
                       </Tooltip>
                     </td>
-
-                    {/* Image */}
                     <td className="px-4 py-3 w-16">
                       {campaign.imageUrl ? (
-                        <img
-                          src={campaign.imageUrl}
-                          alt="banner"
+                        <img src={campaign.imageUrl} alt="banner"
                           className="w-10 h-10 object-cover rounded-md border border-gray-100"
-                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                       ) : (
-                        <span className="text-gray-300 text-xs">—</span>
+                        <span className="text-gray-300 text-xs">-</span>
                       )}
                     </td>
-
-                    {/* Target */}
                     <td className="px-4 py-3 whitespace-nowrap">
                       <TargetBadge type={campaign.targetType} count={campaign.targetPhones.length} />
                       {campaign.targetType === 'selected' && campaign.targetPhones.length > 0 && (
@@ -681,22 +740,14 @@ const handleTrigger = async (campaign: Campaign) => {
                         </Tooltip>
                       )}
                     </td>
-
-                    {/* Scheduled at */}
                     <td className="px-4 py-3 whitespace-nowrap text-gray-600">
                       <p>{moment(campaign.scheduledAt).format('DD MMM YYYY')}</p>
                       <p className="text-xs text-gray-400">{moment(campaign.scheduledAt).format('hh:mm A')}</p>
                     </td>
-
-                    {/* Status */}
-                    <td className="px-4 py-3">
-                      <StatusBadge status={campaign.status} />
-                    </td>
-
-                    {/* Sent / Failed */}
+                    <td className="px-4 py-3"><StatusBadge status={campaign.status} /></td>
                     <td className="px-4 py-3">
                       {campaign.status === 'pending' ? (
-                        <span className="text-gray-300 text-xs">—</span>
+                        <span className="text-gray-300 text-xs">-</span>
                       ) : (
                         <div className="flex items-center gap-2 text-xs">
                           <span className="flex items-center gap-1 text-green-600 font-medium">
@@ -715,34 +766,27 @@ const handleTrigger = async (campaign: Campaign) => {
                         </div>
                       )}
                     </td>
-
-                    {/* Action */}
                     <td className="px-4 py-3">
-                      {/* Replace the Action td content */}
-                        {campaign.status === 'pending' ? (
+                      {campaign.status === 'pending' ? (
                         <div className="flex items-center gap-1">
-                            <Tooltip title="Send now">
-                            <button
-                                onClick={() => handleTrigger(campaign)}
-                                className="p-1.5 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
-                            >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <Tooltip title="Send now">
+                            <button onClick={() => handleTrigger(campaign)}
+                              className="p-1.5 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                                </svg>
+                              </svg>
                             </button>
-                            </Tooltip>
-                            <Tooltip title="Delete campaign">
-                            <button
-                                onClick={() => handleDelete(campaign)}
-                                className="p-1.5 rounded-md text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            >
-                                <TrashSvg />
+                          </Tooltip>
+                          <Tooltip title="Delete campaign">
+                            <button onClick={() => handleDelete(campaign)}
+                              className="p-1.5 rounded-md text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+                              <TrashSvg />
                             </button>
-                            </Tooltip>
+                          </Tooltip>
                         </div>
-                        ) : (
-                        <span className="text-gray-300 text-xs px-2">—</span>
-                        )}
+                      ) : (
+                        <span className="text-gray-300 text-xs px-2">-</span>
+                      )}
                     </td>
                   </tr>
                 ))}
