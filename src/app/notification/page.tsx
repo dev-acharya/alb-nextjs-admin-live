@@ -648,67 +648,6 @@ export default function NotificationCampaigns() {
               </div>
             </div>
 
-            {/* Percentage Slider — only when targetType is 'all' */}
-            {form.targetType === 'all' && (
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Audience size</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Limit what percentage of eligible customers receive this</p>
-                  </div>
-                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold flex-shrink-0
-                    ${form.percentage === 100
-                      ? 'bg-green-100 text-green-700'
-                      : form.percentage >= 50
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-amber-100 text-amber-700'}`}>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    {targetedCount !== null ? `${targetedCount.toLocaleString()} customers` : 'Loading...'}
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <input
-                    type="range"
-                    min={1}
-                    max={100}
-                    step={1}
-                    value={form.percentage}
-                    onChange={handleSlider}
-                    className="w-full h-2 rounded-full appearance-none cursor-pointer"
-                    style={{
-                      background: `linear-gradient(to right, #dc2626 0%, #dc2626 ${form.percentage}%, #e5e7eb ${form.percentage}%, #e5e7eb 100%)`,
-                      accentColor: '#dc2626',
-                    }}
-                  />
-                  <div className="flex justify-between mt-1.5">
-                    <span className="text-xs text-gray-400">1%</span>
-                    <span className="text-xs font-semibold text-red-600">{form.percentage}%</span>
-                    <span className="text-xs text-gray-400">100%</span>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 mt-3">
-                  {[10, 25, 50, 75, 100].map(p => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setForm(prev => ({ ...prev, percentage: p }))}
-                      className={`flex-1 py-1 rounded-md text-xs font-medium border transition
-                        ${form.percentage === p
-                          ? 'bg-red-600 border-red-600 text-white'
-                          : 'bg-white border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-600'}`}
-                    >
-                      {p}%
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Phone selector */}
             {form.targetType === 'selected' && (
               <div className="rounded-lg border border-dashed border-indigo-200 bg-indigo-50 p-4">
