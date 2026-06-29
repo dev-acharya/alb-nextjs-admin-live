@@ -208,7 +208,7 @@ export default function NotificationCampaigns() {
       formData.append('image', file);
 
       const uploadRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/mobile/upload-image`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/shopify/notify/upload-image`,
         { method: 'POST', body: formData, credentials: 'include' }
       );
       const uploadData = await uploadRes.json();
