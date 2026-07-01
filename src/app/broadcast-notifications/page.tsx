@@ -170,7 +170,8 @@ interface FormErrors {
 function BroadcastNotificationContent() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
+  const draftLoaded = useRef(false);
+  const DRAFT_KEY = "broadcast_notification_draft";
   const [form, setForm] = useState<FormState>({
     title: "",
     body: "",
@@ -201,6 +202,34 @@ function BroadcastNotificationContent() {
       .then(d => { if (d.success) setTotalDevices(d.count); })
       .catch(() => {});
   }, []);
+
+  // Restore any unsaved draft
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.form) {
+          setForm(parsed.form);
+          if (parsed.form.imageUrl) setImagePreview(parsed.form.imageUrl);
+        }
+        if (Array.isArray(parsed.deviceIds)) setDeviceIds(parsed.deviceIds);
+      }
+    } catch {
+      // corrupted or missing draft, ignore
+    } finally {
+      draftLoaded.current = true;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!draftLoaded.current) return;
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ form, deviceIds }));
+    } catch {
+      // storage full/unavailable, ignore
+    }
+  }, [form, deviceIds]);
 
   const handleChange = (field: keyof FormState, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -376,6 +405,8 @@ const validate = () => {
           timer: 2500,
           showConfirmButton: false,
         });
+
+        localStorage.removeItem(DRAFT_KEY);
 
         setForm({ title: "", body: "", screen: "", externalUrl: "", linkType: "screen", imageUrl: "", scheduleType: "now", scheduledAt: "", targetType: "all" });
         setImagePreview("");
