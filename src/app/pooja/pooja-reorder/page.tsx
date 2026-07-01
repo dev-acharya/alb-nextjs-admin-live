@@ -4,13 +4,14 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Swal from "sweetalert2";
-import { Reorder, useDragControls } from "framer-motion";
+import { Reorder } from "framer-motion";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface ReorderPuja {
   _id: string;
   title: string;
   subTitle?: string;
+  overview?: string;
   price: number;
   mainImage: string;
   laptopImage?: string;
@@ -63,22 +64,15 @@ interface RowProps {
 }
 
 const PujaRow: React.FC<RowProps> = ({ puja, index }) => {
-  const dragControls = useDragControls();
-
   return (
     <Reorder.Item
       value={puja}
       id={puja._id}
-      dragListener={false}
-      dragControls={dragControls}
-      className="bg-white border border-gray-200 rounded-lg p-3 flex items-center gap-4 shadow-sm"
+      className="bg-white border border-gray-200 rounded-lg p-3 flex items-center gap-4 shadow-sm cursor-grab active:cursor-grabbing"
       whileDrag={{ boxShadow: "0 8px 20px rgba(0,0,0,0.12)", scale: 1.01 }}
     >
-      {/* Drag handle — only this element starts the drag */}
-      <div
-        onPointerDown={(e) => dragControls.start(e)}
-        className="cursor-grab active:cursor-grabbing flex-shrink-0 touch-none select-none"
-      >
+      {/* Handle is now just a visual affordance — the whole row is draggable */}
+      <div className="flex-shrink-0 pointer-events-none">
         <DragHandleSvg />
       </div>
 
@@ -86,11 +80,13 @@ const PujaRow: React.FC<RowProps> = ({ puja, index }) => {
         <span className="text-base font-bold text-blue-600">#{index + 1}</span>
       </div>
 
-      {/* Image thumbnails — main / laptop / mobile */}
-      <div className="flex gap-1.5 flex-shrink-0">
+      {/* Image thumbnails — main / laptop / mobile.
+          pointer-events-none stops the natively-draggable <img> tags from
+          hijacking the row's drag gesture. */}
+      <div className="flex gap-1.5 flex-shrink-0 pointer-events-none">
         {[
-          { src: puja.mainImage, label: "Main" },
-          { src: puja.laptopImage, label: "Laptop" },
+        //   { src: puja.mainImage, label: "Main" },
+        //   { src: puja.laptopImage, label: "Laptop" },
           { src: puja.mobileImage, label: "Mobile" },
         ].map(({ src, label }) =>
           src ? (
@@ -116,14 +112,14 @@ const PujaRow: React.FC<RowProps> = ({ puja, index }) => {
         )}
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pointer-events-none select-none">
         <h3 className="font-medium text-gray-900 text-sm truncate">{puja.title}</h3>
         <p className="text-xs text-gray-400 truncate mt-0.5">
-          {puja.subTitle || "No description"}
+          {puja.overview || "No description"}
         </p>
       </div>
 
-      <span className="text-sm font-semibold text-gray-700 flex-shrink-0">
+      <span className="text-sm font-semibold text-gray-700 flex-shrink-0 pointer-events-none select-none">
         {formatIndianRupee(puja.price)}
       </span>
     </Reorder.Item>
