@@ -275,15 +275,8 @@ const fetchFilteredStats = async (currentFilters: Filters) => {
       if (v !== "" && v !== null && v !== undefined && 
           k !== "limit" && k !== "sortBy" && k !== "sortOrder" && k !== "page") {
         // Special handling for status filter
-        if (k === "status") {
-          if (v !== "all") {
-            statsQs.set(k, String(v));
-          }
-        }
-        // For all other filters
-        else {
-          statsQs.set(k, String(v));
-        }
+        statsQs.set(k, String(v));
+
       }
     });
 
@@ -316,18 +309,10 @@ const debouncedFetch = useMemo(() =>
       Object.entries(currentFilters).forEach(([k, v]) => {
         if (v !== "" && v !== null && v !== undefined && k !== "dateRange") {
           // Special handling for status filter
-          if (k === "status") {
-            if (v !== "all") {
-              qs.set(k, String(v));
-            }
-          }
-          // Handle from/to dates
-          else if (k === "from" && currentFilters.from && !currentFilters.to) {
+          if (k === "from" && currentFilters.from && !currentFilters.to) {
             qs.set("from", currentFilters.from);
             qs.set("to", currentFilters.from);
-          } 
-          // For all other filters
-          else {
+          } else {
             qs.set(k, String(v));
           }
         }
@@ -755,7 +740,6 @@ const debouncedFetch = useMemo(() =>
       const qs = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => {
         if (v !== "" && v !== null && v !== undefined && k !== "dateRange" && k !== "limit") {
-          if (k === "status" && v === "all") return;
           qs.set(k, String(v));
         }
       });
@@ -972,9 +956,16 @@ const debouncedFetch = useMemo(() =>
             <button onClick={downloadCSV} className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors">
               CSV (Current Page)
             </button>
-            <button onClick={downloadServerCSV} className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors">
-              CSV (All)
-            </button>
+            {exportingAll ? (
+              <div className="px-3 py-1.5 text-sm font-medium text-blue-600 flex items-center gap-2">
+                <span className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+                Downloading…
+              </div>
+            ) : (
+              <button onClick={downloadServerCSV} className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors">
+                CSV (All)
+              </button>
+            )}
           </div>
         </div>
 
