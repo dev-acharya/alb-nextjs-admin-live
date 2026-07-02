@@ -189,7 +189,7 @@ const ReportOrders: React.FC = () => {
     dateRange: "",
     language: "",
     planName: "",
-    status: "all",
+    status: "paid",
     astroConsultation: "",
     expressDelivery: "",
     includeDeleted: false,
@@ -660,6 +660,49 @@ const debouncedFetch = useMemo(() =>
     }
   };
 
+  const [exportingFiltered, setExportingFiltered] = useState<boolean>(false);
+
+const downloadFilteredCSV = async () => {
+  setExportingFiltered(true);
+  try {
+    const token = localStorage.getItem("access_token");
+    const qs = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== "" && v !== null && v !== undefined && k !== "dateRange" && k !== "limit") {
+        qs.set(k, String(v));
+      }
+    });
+
+    const res = await fetch(
+      `/api/admin/life-journey-orders/export-filtered?${qs.toString()}`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { Authorization: "Bearer " + token },
+      }
+    );
+
+    if (!res.ok) throw new Error("Export failed");
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `life_journey_orders_filtered_${moment().format("YYYY-MM-DD_HHmm")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+    Swal.fire({ icon: "success", title: "Export complete", timer: 1500, showConfirmButton: false });
+  } catch (e) {
+    console.error(e);
+    Swal.fire({ icon: "error", title: "CSV export failed", timer: 2000, showConfirmButton: false });
+  } finally {
+    setExportingFiltered(false);
+  }
+};
+
   const downloadCSV = () => {
   const headers = [
     "_id", "orderID", "planName", "name", "email", "whatsapp", "gender", "reportLanguage", 
@@ -953,9 +996,16 @@ const debouncedFetch = useMemo(() =>
           </div>
           
           <div className="flex gap-2 ml-auto">
-            <button onClick={downloadCSV} className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors">
-              CSV (Current Page)
-            </button>
+            {exportingFiltered ? (
+              <div className="px-3 py-1.5 text-sm font-medium text-blue-600 flex items-center gap-2">
+                <span className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+                Downloading…
+              </div>
+            ) : (
+              <button onClick={downloadFilteredCSV} className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors">
+                CSV (Filtered)
+              </button>
+            )}
             {exportingAll ? (
               <div className="px-3 py-1.5 text-sm font-medium text-blue-600 flex items-center gap-2">
                 <span className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
@@ -1143,7 +1193,7 @@ const debouncedFetch = useMemo(() =>
                   dateRange: "",
                   language: "",
                   planName: "",
-                  status: "all",
+                  status: "paid",
                   astroConsultation: "",
                   expressDelivery: "",
                   includeDeleted: false,
