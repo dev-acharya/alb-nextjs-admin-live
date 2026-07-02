@@ -480,6 +480,36 @@ const debouncedFetch = useMemo(() =>
         label: 'Razorpay Order ID', 
         truncate: true 
       },
+       utm_source: { 
+        label: 'UTM Source', 
+        truncate: true 
+      },
+      utm_medium: { 
+        label: 'UTM Medium', 
+        truncate: true 
+      },
+      utm_campaign: { 
+        label: 'UTM Campaign', 
+        truncate: true 
+      },
+      utm_term: { 
+        label: 'UTM Term', 
+        truncate: true 
+      },
+      utm_content: { 
+        label: 'UTM Content', 
+        truncate: true 
+      },
+
+      // ✅ NEW: Landing page tracking
+      landing_url: { 
+        label: 'Landing URL', 
+        truncate: true 
+      },
+      landing_at: { 
+        label: 'Landing At', 
+        formatter: (v: string) => moment(v).format('DD/MM/YYYY hh:mm A')
+      },
       
       // ✅ NEW: Order Fingerprint - LAST ROW with FULL TEXT
       orderFingerprint: { 
