@@ -197,6 +197,7 @@ const ReportOrders: React.FC = () => {
     sortOrder: "desc",
     limit: 200,
   });
+  const [exportingAll, setExportingAll] = useState<boolean>(false);
 
   const [rows, setRows] = useState<Order[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -748,30 +749,49 @@ const debouncedFetch = useMemo(() =>
 
 
   const downloadServerCSV = async () => {
+    setExportingAll(true);
     try {
       const token = localStorage.getItem("access_token");
       const qs = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => {
-        if (v !== "" && v !== null && v !== undefined && k !== "dateRange") {
+        if (v !== "" && v !== null && v !== undefined && k !== "dateRange" && k !== "limit") {
+          if (k === "status" && v === "all") return;
           qs.set(k, String(v));
         }
       });
 
       const res = await fetch(
         `/api/admin/life-journey-orders/export?${qs.toString()}`,
-        { method: "POST",credentials: "include", headers: { Authorization: "Bearer " + token } }
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { Authorization: "Bearer " + token },
+        }
       );
+
+      if (!res.ok) throw new Error("Export failed");
+
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "life_journey_orders_all.csv";
+      a.download = `life_journey_orders_all_${moment().format("YYYY-MM-DD_HHmm")}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+
+      Swal.fire({
+        icon: "success",
+        title: "Export complete",
+        timer: 1500,
+        showConfirmButton: false,
+      });
     } catch (e) {
+      console.error(e);
       Swal.fire({ icon: "error", title: "CSV export failed", timer: 2000, showConfirmButton: false });
+    } finally {
+      setExportingAll(false);
     }
   };
 
@@ -952,9 +972,9 @@ const debouncedFetch = useMemo(() =>
             <button onClick={downloadCSV} className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors">
               CSV (Current Page)
             </button>
-            {/* <button onClick={downloadServerCSV} className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors">
+            <button onClick={downloadServerCSV} className="px-3 py-1.5 text-sm font-medium text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors">
               CSV (All)
-            </button> */}
+            </button>
           </div>
         </div>
 
