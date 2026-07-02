@@ -572,10 +572,10 @@ const validate = () => {
 
               {/* Link / redirect */}
 <div className="space-y-2">
-  <label className="text-sm font-medium text-gray-700">
+  {/* <label className="text-sm font-medium text-gray-700">
     Tap Action <span className="text-xs text-gray-400 font-normal">(optional)</span>
-  </label>
-  <div className="grid grid-cols-2 gap-2">
+  </label> */}
+  {/* <div className="grid grid-cols-2 gap-2">
     {(["screen", "external"] as const).map(type => (
       <button
         key={type}
@@ -590,7 +590,7 @@ const validate = () => {
         { type === "screen" ? "In-App Screen" : "External Link"}
       </button>
     ))}
-  </div>
+  </div> */}
 
   {form.linkType === "screen" && (
     <select
